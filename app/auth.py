@@ -1,4 +1,5 @@
 """Google OAuth flow and session helpers."""
+
 import urllib.parse
 
 import httpx
@@ -21,6 +22,7 @@ _signer = URLSafeTimedSerializer(settings.secret_key, salt="session")
 # Session helpers
 # ---------------------------------------------------------------------------
 
+
 def create_session_token(user_id: int) -> str:
     return _signer.dumps(user_id)
 
@@ -42,6 +44,7 @@ def get_session_user_id(request: Request) -> int | None:
 # ---------------------------------------------------------------------------
 # OAuth flow
 # ---------------------------------------------------------------------------
+
 
 def build_authorization_url() -> str:
     """Return the Google authorization URL to redirect the user to."""
@@ -85,6 +88,7 @@ async def exchange_code_for_user_info(code: str) -> dict:
 # User upsert
 # ---------------------------------------------------------------------------
 
+
 async def get_or_create_user(db: AsyncSession, user_info: dict) -> User:
     """Find existing user by google_id or create a new one."""
     google_id = user_info["sub"]
@@ -118,6 +122,7 @@ async def get_or_create_user(db: AsyncSession, user_info: dict) -> User:
 # ---------------------------------------------------------------------------
 # Request dependency
 # ---------------------------------------------------------------------------
+
 
 async def get_current_user(request: Request, db: AsyncSession) -> User | None:
     user_id = get_session_user_id(request)

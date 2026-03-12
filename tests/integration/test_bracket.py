@@ -1,12 +1,11 @@
 """Integration tests for the bracket voting flow."""
+
 from datetime import datetime
 
-import pytest
 import pytest_asyncio
 from sqlalchemy import select
 
-from app.models import Book, BracketMatchup, BracketVote, ReadBook, Season, SeasonState
-
+from app.models import Book, BracketMatchup, BracketVote, ReadBook, SeasonState
 
 # ---------------------------------------------------------------------------
 # Local fixtures
@@ -63,9 +62,7 @@ async def bracket_setup(db, active_season, test_user, test_admin):
 async def test_bracket_vote_happy_path(client_as_user, bracket_setup):
     """Voting for a valid book in a matchup → 302 redirect."""
     season, book1, book2, matchup = bracket_setup
-    resp = await client_as_user.post(
-        f"/bracket/vote/{matchup.id}", data={"book_id": str(book1.id)}
-    )
+    resp = await client_as_user.post(f"/bracket/vote/{matchup.id}", data={"book_id": str(book1.id)})
     assert resp.status_code == 302
     assert resp.headers["location"] == "/bracket"
 
@@ -73,9 +70,7 @@ async def test_bracket_vote_happy_path(client_as_user, bracket_setup):
 async def test_bracket_vote_invalid_book(client_as_user, bracket_setup):
     """Voting for a book_id not in the matchup returns 400."""
     season, book1, book2, matchup = bracket_setup
-    resp = await client_as_user.post(
-        f"/bracket/vote/{matchup.id}", data={"book_id": "9999"}
-    )
+    resp = await client_as_user.post(f"/bracket/vote/{matchup.id}", data={"book_id": "9999"})
     assert resp.status_code == 400
 
 
@@ -83,12 +78,8 @@ async def test_bracket_double_vote_ignored(client_as_user, bracket_setup, db):
     """A second vote on the same matchup is silently ignored (original preserved)."""
     season, book1, book2, matchup = bracket_setup
 
-    await client_as_user.post(
-        f"/bracket/vote/{matchup.id}", data={"book_id": str(book1.id)}
-    )
-    resp = await client_as_user.post(
-        f"/bracket/vote/{matchup.id}", data={"book_id": str(book2.id)}
-    )
+    await client_as_user.post(f"/bracket/vote/{matchup.id}", data={"book_id": str(book1.id)})
+    resp = await client_as_user.post(f"/bracket/vote/{matchup.id}", data={"book_id": str(book2.id)})
     assert resp.status_code == 302
 
     # Original vote (book1) is preserved
@@ -103,25 +94,15 @@ async def test_bracket_final_completes_season(client_as_user, bracket_setup, db)
     season, book1, book2, matchup = bracket_setup
 
     # test_admin pre-votes via DB so only test_user's HTTP vote is left
-    admin_vote = BracketVote(
-        user_id=bracket_setup[0].id,  # season — need test_admin id
-        matchup_id=matchup.id,
-        book_id=book1.id,
-    )
-    # Get test_admin from DB
     from app.models import User
 
     result = await db.execute(select(User).where(User.email == "admin@test.com"))
     test_admin = result.scalar_one()
-    db.add(
-        BracketVote(user_id=test_admin.id, matchup_id=matchup.id, book_id=book1.id)
-    )
+    db.add(BracketVote(user_id=test_admin.id, matchup_id=matchup.id, book_id=book1.id))
     await db.commit()
 
     # test_user casts the deciding vote
-    resp = await client_as_user.post(
-        f"/bracket/vote/{matchup.id}", data={"book_id": str(book1.id)}
-    )
+    resp = await client_as_user.post(f"/bracket/vote/{matchup.id}", data={"book_id": str(book1.id)})
     assert resp.status_code == 302
 
     # Season should now be complete
@@ -130,7 +111,7 @@ async def test_bracket_final_completes_season(client_as_user, bracket_setup, db)
 
     # Winner should appear in read_books with won=True
     result = await db.execute(
-        select(ReadBook).where(ReadBook.title == book1.title, ReadBook.won == True)
+        select(ReadBook).where(ReadBook.title == book1.title, ReadBook.won.is_(True))
     )
     winner_entry = result.scalar_one_or_none()
     assert winner_entry is not None
@@ -158,9 +139,7 @@ async def test_tiebreak_earliest_vote_wins(client_as_user, bracket_setup, db):
     await db.commit()
 
     # test_user votes for book1 (later timestamp, set by server_default ~now)
-    resp = await client_as_user.post(
-        f"/bracket/vote/{matchup.id}", data={"book_id": str(book1.id)}
-    )
+    resp = await client_as_user.post(f"/bracket/vote/{matchup.id}", data={"book_id": str(book1.id)})
     assert resp.status_code == 302
 
     # Equal votes (1 each); book2's first vote was earlier → book2 should win
@@ -168,6 +147,6 @@ async def test_tiebreak_earliest_vote_wins(client_as_user, bracket_setup, db):
     assert season.state == SeasonState.complete
 
     result = await db.execute(
-        select(ReadBook).where(ReadBook.title == book2.title, ReadBook.won == True)
+        select(ReadBook).where(ReadBook.title == book2.title, ReadBook.won.is_(True))
     )
     assert result.scalar_one_or_none() is not None

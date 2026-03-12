@@ -1,10 +1,9 @@
 """Integration tests for the Borda ranking flow."""
-import pytest
+
 import pytest_asyncio
 from sqlalchemy import select
 
-from app.models import Book, BordaVote, Season, SeasonState
-
+from app.models import Book, BordaVote, SeasonState
 
 # ---------------------------------------------------------------------------
 # Local fixtures
@@ -143,9 +142,7 @@ async def test_borda_count_correctness(client_as_admin, ranking_advance_setup, d
     # Verify seeds in DB
     from app.models import Seed
 
-    result = await db.execute(
-        select(Seed).where(Seed.season_id == season.id).order_by(Seed.seed)
-    )
+    result = await db.execute(select(Seed).where(Seed.season_id == season.id).order_by(Seed.seed))
     seeds = result.scalars().all()
     assert len(seeds) == 2
     seed_map = {s.book_id: s.seed for s in seeds}

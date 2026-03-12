@@ -1,8 +1,8 @@
 """Integration test fixtures: SQLite in-memory DB + FastAPI test client."""
-import pytest
+
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base, get_db
 from app.main import app, require_admin, require_user

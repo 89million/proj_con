@@ -9,7 +9,7 @@ build-env:
 install:
 	uv pip install -r requirements.txt -r requirements-dev.txt
 
-fmt:
+format:
 	isort app/ tests/
 	black app/ tests/
 

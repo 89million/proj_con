@@ -1,4 +1,5 @@
 """State machine: check transition conditions and auto-advance seasons."""
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud, voting

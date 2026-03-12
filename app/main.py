@@ -1,5 +1,6 @@
 """FastAPI application — all routes."""
-from fastapi import Depends, FastAPI, Form, HTTPException, Request, Response
+
+from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -26,18 +27,15 @@ templates = Jinja2Templates(directory="app/templates")
 # Dependency helpers
 # ---------------------------------------------------------------------------
 
-async def require_user(
-    request: Request, db: AsyncSession = Depends(get_db)
-) -> User:
+
+async def require_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
     user = await get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=302, headers={"Location": "/auth/login"})
     return user
 
 
-async def require_admin(
-    request: Request, db: AsyncSession = Depends(get_db)
-) -> User:
+async def require_admin(request: Request, db: AsyncSession = Depends(get_db)) -> User:
     user = await get_current_user(request, db)
     if user is None:
         raise HTTPException(status_code=302, headers={"Location": "/auth/login"})
@@ -50,6 +48,7 @@ async def require_admin(
 # Root
 # ---------------------------------------------------------------------------
 
+
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request, db: AsyncSession = Depends(get_db)):
     user = await get_current_user(request, db)
@@ -59,9 +58,7 @@ async def root(request: Request, db: AsyncSession = Depends(get_db)):
     season = await crud.get_active_season(db)
     if season is None:
         # No active season — check if admin, show admin page hint
-        return templates.TemplateResponse(
-            "no_season.html", {"request": request, "user": user}
-        )
+        return templates.TemplateResponse("no_season.html", {"request": request, "user": user})
 
     if season.state == SeasonState.submit:
         return RedirectResponse("/submit", status_code=302)
@@ -76,6 +73,7 @@ async def root(request: Request, db: AsyncSession = Depends(get_db)):
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------
+
 
 @app.get("/auth/login")
 async def auth_login():
@@ -118,6 +116,7 @@ async def auth_logout():
 # ---------------------------------------------------------------------------
 # Submit state
 # ---------------------------------------------------------------------------
+
 
 @app.get("/submit", response_class=HTMLResponse)
 async def submit_page(
@@ -203,6 +202,7 @@ async def submit_book(
 # Ranking state
 # ---------------------------------------------------------------------------
 
+
 @app.get("/ranking", response_class=HTMLResponse)
 async def ranking_page(
     request: Request,
@@ -255,8 +255,6 @@ async def submit_ranking(
     form_data = await request.form()
     # Expect fields named "rank_{book_id}" with integer values 1..N
     books = await crud.get_books_for_season(db, season.id)
-    book_ids = {b.id for b in books}
-
     try:
         ranked: dict[int, int] = {}  # {book_id: rank}
         for book in books:
@@ -284,6 +282,7 @@ async def submit_ranking(
 # ---------------------------------------------------------------------------
 # Bracket state
 # ---------------------------------------------------------------------------
+
 
 @app.get("/bracket", response_class=HTMLResponse)
 async def bracket_page(
@@ -362,6 +361,7 @@ async def bracket_vote(
 # Complete state
 # ---------------------------------------------------------------------------
 
+
 @app.get("/complete", response_class=HTMLResponse)
 async def complete_page(
     request: Request,
@@ -398,6 +398,7 @@ async def complete_page(
 # Partials (HTMX polling)
 # ---------------------------------------------------------------------------
 
+
 @app.get("/partials/waiting-on", response_class=HTMLResponse)
 async def waiting_on_partial(
     request: Request,
@@ -427,6 +428,7 @@ async def waiting_on_partial(
 # ---------------------------------------------------------------------------
 # Admin
 # ---------------------------------------------------------------------------
+
 
 @app.get("/admin", response_class=HTMLResponse)
 async def admin_page(

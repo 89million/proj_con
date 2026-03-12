@@ -1,4 +1,5 @@
 """Borda count, bracket seeding, and tiebreaker logic."""
+
 from collections import defaultdict
 from datetime import datetime
 
@@ -24,7 +25,7 @@ def compute_borda_seeds(
     scores: dict[int, int] = defaultdict(int)
 
     for vote in votes:
-        scores[vote.book_id] += (n - vote.rank)
+        scores[vote.book_id] += n - vote.rank
 
     sorted_books = sorted(
         books,
@@ -68,27 +69,31 @@ def _build_round_matchups(
     # Top num_byes entries get byes (auto-resolved, no voting needed)
     for i in range(num_byes):
         book_id = ordered_book_ids[i]
-        matchups.append({
-            "season_id": season_id,
-            "round": round_num,
-            "position": position,
-            "book_a_id": book_id,
-            "book_b_id": book_id,
-            "winner_id": book_id,
-        })
+        matchups.append(
+            {
+                "season_id": season_id,
+                "round": round_num,
+                "position": position,
+                "book_a_id": book_id,
+                "book_b_id": book_id,
+                "winner_id": book_id,
+            }
+        )
         position += 1
 
     # Pair remaining entries: top vs bottom
     remaining = ordered_book_ids[num_byes:]
     half = len(remaining) // 2
     for i in range(half):
-        matchups.append({
-            "season_id": season_id,
-            "round": round_num,
-            "position": position,
-            "book_a_id": remaining[i],
-            "book_b_id": remaining[-(i + 1)],
-        })
+        matchups.append(
+            {
+                "season_id": season_id,
+                "round": round_num,
+                "position": position,
+                "book_a_id": remaining[i],
+                "book_b_id": remaining[-(i + 1)],
+            }
+        )
         position += 1
 
     return matchups

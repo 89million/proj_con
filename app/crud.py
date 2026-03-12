@@ -1,5 +1,6 @@
 """All database read/write operations."""
-from sqlalchemy import select, func, and_
+
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -10,15 +11,15 @@ from app.models import (
     BracketVote,
     ReadBook,
     Season,
-    Seed,
     SeasonState,
+    Seed,
     User,
 )
-
 
 # ---------------------------------------------------------------------------
 # Season
 # ---------------------------------------------------------------------------
+
 
 async def get_active_season(db: AsyncSession) -> Season | None:
     """Return the most recent non-complete season, or None."""
@@ -58,6 +59,7 @@ async def get_all_seasons(db: AsyncSession) -> list[Season]:
 # Users
 # ---------------------------------------------------------------------------
 
+
 async def get_all_users(db: AsyncSession) -> list[User]:
     result = await db.execute(select(User).order_by(User.name))
     return list(result.scalars().all())
@@ -71,6 +73,7 @@ async def get_user_by_id(db: AsyncSession, user_id: int) -> User | None:
 # ---------------------------------------------------------------------------
 # Books / submissions
 # ---------------------------------------------------------------------------
+
 
 async def get_books_for_season(db: AsyncSession, season_id: int) -> list[Book]:
     result = await db.execute(
@@ -126,12 +129,15 @@ async def count_users(db: AsyncSession) -> int:
 # Read books (admin-managed)
 # ---------------------------------------------------------------------------
 
+
 async def get_all_read_books(db: AsyncSession) -> list[ReadBook]:
     result = await db.execute(select(ReadBook).order_by(ReadBook.title))
     return list(result.scalars().all())
 
 
-async def is_book_blocked(db: AsyncSession, title: str, author: str, season_id: int) -> tuple[bool, str]:
+async def is_book_blocked(
+    db: AsyncSession, title: str, author: str, season_id: int
+) -> tuple[bool, str]:
     """
     Returns (is_blocked, reason).
     Blocked if:
@@ -144,7 +150,7 @@ async def is_book_blocked(db: AsyncSession, title: str, author: str, season_id: 
             and_(
                 func.lower(ReadBook.title) == title.lower(),
                 func.lower(ReadBook.author) == author.lower(),
-                ReadBook.won == True,
+                ReadBook.won.is_(True),
             )
         )
     )
@@ -191,6 +197,7 @@ async def delete_read_book(db: AsyncSession, read_book_id: int) -> bool:
 # Borda votes
 # ---------------------------------------------------------------------------
 
+
 async def save_borda_votes(
     db: AsyncSession, user_id: int, season_id: int, ranked_book_ids: list[int]
 ) -> None:
@@ -201,7 +208,9 @@ async def save_borda_votes(
     await db.commit()
 
 
-async def get_borda_votes_for_user(db: AsyncSession, user_id: int, season_id: int) -> list[BordaVote]:
+async def get_borda_votes_for_user(
+    db: AsyncSession, user_id: int, season_id: int
+) -> list[BordaVote]:
     result = await db.execute(
         select(BordaVote)
         .where(and_(BordaVote.user_id == user_id, BordaVote.season_id == season_id))
@@ -211,9 +220,7 @@ async def get_borda_votes_for_user(db: AsyncSession, user_id: int, season_id: in
 
 
 async def get_all_borda_votes_for_season(db: AsyncSession, season_id: int) -> list[BordaVote]:
-    result = await db.execute(
-        select(BordaVote).where(BordaVote.season_id == season_id)
-    )
+    result = await db.execute(select(BordaVote).where(BordaVote.season_id == season_id))
     return list(result.scalars().all())
 
 
@@ -228,6 +235,7 @@ async def count_borda_voters(db: AsyncSession, season_id: int) -> int:
 # ---------------------------------------------------------------------------
 # Seeds
 # ---------------------------------------------------------------------------
+
 
 async def save_seeds(db: AsyncSession, season_id: int, seeds: dict[int, int]) -> None:
     """seeds = {book_id: seed_number}"""
@@ -250,6 +258,7 @@ async def get_seeds_for_season(db: AsyncSession, season_id: int) -> list[Seed]:
 # ---------------------------------------------------------------------------
 # Bracket matchups
 # ---------------------------------------------------------------------------
+
 
 async def create_matchups(db: AsyncSession, matchups: list[dict]) -> list[BracketMatchup]:
     """matchups = list of {season_id, round, position, book_a_id, book_b_id}"""
@@ -298,11 +307,10 @@ async def set_matchup_winner(db: AsyncSession, matchup: BracketMatchup, winner_i
 async def get_current_bracket_round(db: AsyncSession, season_id: int) -> int:
     """Return the lowest round number that still has undecided matchups."""
     result = await db.execute(
-        select(func.min(BracketMatchup.round))
-        .where(
+        select(func.min(BracketMatchup.round)).where(
             and_(
                 BracketMatchup.season_id == season_id,
-                BracketMatchup.winner_id == None,
+                BracketMatchup.winner_id.is_(None),
             )
         )
     )
@@ -336,9 +344,8 @@ async def get_matchups_for_round(
 # Bracket votes
 # ---------------------------------------------------------------------------
 
-async def get_bracket_vote(
-    db: AsyncSession, user_id: int, matchup_id: int
-) -> BracketVote | None:
+
+async def get_bracket_vote(db: AsyncSession, user_id: int, matchup_id: int) -> BracketVote | None:
     result = await db.execute(
         select(BracketVote).where(
             and_(BracketVote.user_id == user_id, BracketVote.matchup_id == matchup_id)
@@ -357,9 +364,7 @@ async def save_bracket_vote(
     return vote
 
 
-async def count_bracket_voters_for_round(
-    db: AsyncSession, season_id: int, round_num: int
-) -> int:
+async def count_bracket_voters_for_round(db: AsyncSession, season_id: int, round_num: int) -> int:
     """Number of distinct users who have voted on ALL real (non-bye) matchups in this round."""
     # Only count non-bye matchups (byes have book_a_id == book_b_id, no voting needed)
     matchup_result = await db.execute(
@@ -391,6 +396,7 @@ async def count_bracket_voters_for_round(
 # "Waiting on" helpers
 # ---------------------------------------------------------------------------
 
+
 async def users_who_havent_submitted(db: AsyncSession, season_id: int) -> list[User]:
     submitted_subq = select(Book.submitter_id).where(Book.season_id == season_id)
     result = await db.execute(
@@ -401,9 +407,7 @@ async def users_who_havent_submitted(db: AsyncSession, season_id: int) -> list[U
 
 async def users_who_havent_ranked(db: AsyncSession, season_id: int) -> list[User]:
     ranked_subq = select(BordaVote.user_id.distinct()).where(BordaVote.season_id == season_id)
-    result = await db.execute(
-        select(User).where(User.id.notin_(ranked_subq)).order_by(User.name)
-    )
+    result = await db.execute(select(User).where(User.id.notin_(ranked_subq)).order_by(User.name))
     return list(result.scalars().all())
 
 

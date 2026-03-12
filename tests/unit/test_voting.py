@@ -1,4 +1,5 @@
 """Unit tests for app/voting.py — pure logic, no DB required."""
+
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 

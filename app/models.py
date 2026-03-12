@@ -1,16 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import (
-    Boolean,
-    DateTime,
-    Enum,
-    ForeignKey,
-    Integer,
-    String,
-    UniqueConstraint,
-    func,
-)
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -37,7 +28,9 @@ class User(Base):
     books: Mapped[list["Book"]] = relationship("Book", back_populates="submitter")
     borda_votes: Mapped[list["BordaVote"]] = relationship("BordaVote", back_populates="user")
     bracket_votes: Mapped[list["BracketVote"]] = relationship("BracketVote", back_populates="user")
-    read_books_added: Mapped[list["ReadBook"]] = relationship("ReadBook", back_populates="added_by_user")
+    read_books_added: Mapped[list["ReadBook"]] = relationship(
+        "ReadBook", back_populates="added_by_user"
+    )
 
 
 class Season(Base):
@@ -51,7 +44,9 @@ class Season(Base):
 
     books: Mapped[list["Book"]] = relationship("Book", back_populates="season")
     seeds: Mapped[list["Seed"]] = relationship("Seed", back_populates="season")
-    matchups: Mapped[list["BracketMatchup"]] = relationship("BracketMatchup", back_populates="season")
+    matchups: Mapped[list["BracketMatchup"]] = relationship(
+        "BracketMatchup", back_populates="season"
+    )
 
 
 class Book(Base):

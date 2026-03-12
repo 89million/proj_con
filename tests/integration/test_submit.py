@@ -1,9 +1,6 @@
 """Integration tests for the book submission flow."""
-import pytest
-import pytest_asyncio
 
-from app.models import ReadBook, SeasonState
-
+from app.models import ReadBook
 
 # ---------------------------------------------------------------------------
 # Tests
