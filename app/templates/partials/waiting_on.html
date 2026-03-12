@@ -1,12 +1,12 @@
 {% if waiting_on %}
-<div class="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900">
-  <span class="font-semibold">⏳ Still waiting on:</span>
+<div class="mt-4 p-3 bg-sound-50 border border-sound-100 rounded-lg text-sm text-sound-500">
+  <span class="font-semibold">Still waiting on:</span>
   {% for u in waiting_on %}
-    <span class="inline-block bg-amber-100 text-amber-800 rounded px-2 py-0.5 mx-1 font-medium">{{ u.name }}</span>
+    <span class="inline-block bg-sound-100 text-sound-500 rounded px-2 py-0.5 mx-1 font-medium">{{ u.name }}</span>
   {% endfor %}
 </div>
 {% else %}
-<div class="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800 font-semibold">
-  ✅ Everyone has voted!
+<div class="mt-4 p-3 bg-forest-50 border border-forest-200 rounded-lg text-sm text-forest-600 font-semibold">
+  Everyone has voted!
 </div>
 {% endif %}

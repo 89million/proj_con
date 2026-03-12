@@ -2,9 +2,9 @@
 {% block title %}Rank the Books — {{ season.name }}{% endblock %}
 {% block content %}
 
-<h1 class="text-2xl font-bold text-amber-900 mb-1">🏆 Rank the Books</h1>
-<p class="text-stone-500 text-sm mb-2">Season: <strong>{{ season.name }}</strong></p>
-<p class="text-stone-600 text-sm mb-6">Drag to reorder. Your #1 pick gets the most Borda points and the best bracket seed.</p>
+<h1 class="text-2xl font-bold text-forest-700 mb-1">Rank the Books</h1>
+<p class="text-forest-400 text-sm mb-2">Season: <strong>{{ season.name }}</strong></p>
+<p class="text-forest-500 text-sm mb-6">Drag to reorder. Your #1 pick gets the most Borda points and the best bracket seed.</p>
 
 <!-- Peer pressure widget -->
 <div
@@ -17,13 +17,13 @@
 
 {% if my_votes %}
   <!-- Already ranked -->
-  <div class="mt-6 p-4 bg-green-50 border border-green-300 rounded-xl">
-    <p class="text-green-800 font-semibold mb-3">✅ Your ranking:</p>
+  <div class="mt-6 p-4 bg-forest-50 border border-forest-200 rounded-xl">
+    <p class="text-forest-600 font-semibold mb-3">Your ranking:</p>
     <ol class="list-decimal list-inside space-y-1">
       {% for book in books %}
-        <li class="text-stone-700">
+        <li class="text-forest-800">
           <span class="font-medium">{{ book.title }}</span>
-          <span class="text-stone-400 text-sm"> — {{ book.author }}</span>
+          <span class="text-forest-400 text-sm"> — {{ book.author }}</span>
         </li>
       {% endfor %}
     </ol>
@@ -41,26 +41,24 @@
     <ul id="sortable-list" class="space-y-2 mb-4">
       {% for book in books %}
       <li
-        class="flex items-center gap-3 bg-white border border-stone-200 rounded-xl px-4 py-3 shadow-sm cursor-grab active:cursor-grabbing select-none"
+        class="flex items-center gap-3 bg-white border border-forest-100 rounded-xl px-4 py-3 shadow-sm cursor-grab active:cursor-grabbing select-none"
         data-book-id="{{ book.id }}"
       >
-        <span class="text-stone-400 text-lg drag-handle">☰</span>
+        <span class="text-forest-300 text-lg drag-handle">☰</span>
         <div class="flex-1">
-          <span class="font-medium">{{ book.title }}</span>
-          <span class="text-stone-400 text-sm"> — {{ book.author }}</span>
-          <span class="text-stone-400 text-xs ml-1">({{ book.page_count }}pp)</span>
+          <span class="font-medium text-forest-800">{{ book.title }}</span>
+          <span class="text-forest-400 text-sm"> — {{ book.author }}</span>
+          <span class="text-forest-300 text-xs ml-1">({{ book.page_count }}pp)</span>
         </div>
-        <!-- Hidden rank input — updated by JS -->
         <input type="hidden" name="rank_{{ book.id }}" class="rank-input" value="" />
       </li>
       {% endfor %}
     </ul>
-    <button type="submit" id="submit-btn" class="w-full bg-amber-800 text-white py-2 rounded-lg font-semibold hover:bg-amber-700 transition">
+    <button type="submit" id="submit-btn" class="w-full bg-forest-600 text-white py-2 rounded-lg font-semibold hover:bg-forest-500 transition">
       Submit My Ranking
     </button>
   </form>
 
-  <!-- Sortable.js for drag-and-drop -->
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <script>
     const list = document.getElementById('sortable-list');

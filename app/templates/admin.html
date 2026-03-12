@@ -2,104 +2,103 @@
 {% block title %}Admin — Book Club{% endblock %}
 {% block content %}
 
-<h1 class="text-2xl font-bold text-amber-900 mb-6">⚙️ Admin Dashboard</h1>
+<h1 class="text-2xl font-bold text-forest-700 mb-6">Admin Dashboard</h1>
 
 <!-- Active season info -->
-<section class="mb-8 bg-white border border-stone-200 rounded-xl p-5 shadow-sm">
-  <h2 class="font-semibold text-stone-700 mb-3">Active Season</h2>
+<section class="mb-8 bg-white border border-forest-100 rounded-xl p-5 shadow-sm">
+  <h2 class="font-semibold text-forest-600 mb-3">Active Season</h2>
   {% if active_season %}
-    <p class="text-stone-700">
+    <p class="text-forest-700">
       <strong>{{ active_season.name }}</strong>
-      · State: <span class="font-mono text-amber-700">{{ active_season.state.value }}</span>
+      · State: <span class="font-mono text-sound-400">{{ active_season.state.value }}</span>
       · Page limit: {{ active_season.page_limit }}
     </p>
   {% else %}
-    <p class="text-stone-400 italic">No active season.</p>
+    <p class="text-forest-300 italic">No active season.</p>
   {% endif %}
 </section>
 
 <!-- Start new season -->
-<section class="mb-8 bg-white border border-stone-200 rounded-xl p-5 shadow-sm">
-  <h2 class="font-semibold text-stone-700 mb-3">Start a New Season</h2>
+<section class="mb-8 bg-white border border-forest-100 rounded-xl p-5 shadow-sm">
+  <h2 class="font-semibold text-forest-600 mb-3">Start a New Season</h2>
   <form method="post" action="/admin/season" class="flex flex-col sm:flex-row gap-3">
     <input
       name="name" type="text" required
       placeholder="Season name (e.g. Spring 2026)"
-      class="flex-1 border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+      class="flex-1 border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900"
     />
     <div class="flex items-center gap-2">
-      <label class="text-sm text-stone-600" for="page_limit">Page limit</label>
+      <label class="text-sm text-forest-500" for="page_limit">Page limit</label>
       <input
         id="page_limit" name="page_limit" type="number" value="400" min="1"
-        class="w-24 border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+        class="w-24 border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900"
       />
     </div>
-    <button class="bg-amber-800 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-amber-700 transition">
+    <button class="bg-forest-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-500 transition">
       Create Season
     </button>
   </form>
 </section>
 
 <!-- Previously read books -->
-<section class="mb-8 bg-white border border-stone-200 rounded-xl p-5 shadow-sm">
-  <h2 class="font-semibold text-stone-700 mb-3">Previously Read Books</h2>
+<section class="mb-8 bg-white border border-forest-100 rounded-xl p-5 shadow-sm">
+  <h2 class="font-semibold text-forest-600 mb-3">Previously Read Books</h2>
 
-  <!-- Add book form -->
   <form method="post" action="/admin/read-books" class="flex flex-wrap gap-2 mb-4">
     <input name="title" type="text" required placeholder="Title"
-      class="flex-1 min-w-[160px] border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+      class="flex-1 min-w-[160px] border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900"
     />
     <input name="author" type="text" required placeholder="Author"
-      class="flex-1 min-w-[140px] border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+      class="flex-1 min-w-[140px] border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900"
     />
-    <label class="flex items-center gap-1 text-sm text-stone-600">
-      <input type="checkbox" name="won" value="true" class="accent-amber-700" />
+    <label class="flex items-center gap-1 text-sm text-forest-500">
+      <input type="checkbox" name="won" value="true" class="accent-forest-600" />
       Won?
     </label>
-    <button class="bg-stone-700 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-stone-600 transition">
+    <button class="bg-forest-700 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-600 transition">
       Add
     </button>
   </form>
 
   {% if read_books %}
-  <ul class="divide-y divide-stone-100">
+  <ul class="divide-y divide-forest-50">
     {% for rb in read_books %}
     <li class="flex items-center justify-between py-2 text-sm">
       <div>
-        <span class="font-medium">{{ rb.title }}</span>
-        <span class="text-stone-400 ml-1">— {{ rb.author }}</span>
+        <span class="font-medium text-forest-800">{{ rb.title }}</span>
+        <span class="text-forest-400 ml-1">— {{ rb.author }}</span>
         {% if rb.won %}
-          <span class="ml-2 text-xs bg-amber-100 text-amber-800 rounded px-1.5 py-0.5 font-semibold">🏆 Winner</span>
+          <span class="ml-2 text-xs bg-sound-100 text-sound-500 rounded px-1.5 py-0.5 font-semibold">Winner</span>
         {% endif %}
       </div>
       <form method="post" action="/admin/read-books/{{ rb.id }}/delete">
-        <button class="text-red-500 hover:text-red-700 text-xs font-medium">Remove</button>
+        <button class="text-red-400 hover:text-red-600 text-xs font-medium">Remove</button>
       </form>
     </li>
     {% endfor %}
   </ul>
   {% else %}
-    <p class="text-stone-400 italic text-sm">No books added yet.</p>
+    <p class="text-forest-300 italic text-sm">No books added yet.</p>
   {% endif %}
 </section>
 
 <!-- Members -->
-<section class="mb-8 bg-white border border-stone-200 rounded-xl p-5 shadow-sm">
-  <h2 class="font-semibold text-stone-700 mb-3">Members</h2>
-  <ul class="divide-y divide-stone-100">
+<section class="mb-8 bg-white border border-forest-100 rounded-xl p-5 shadow-sm">
+  <h2 class="font-semibold text-forest-600 mb-3">Members</h2>
+  <ul class="divide-y divide-forest-50">
     {% for u in all_users %}
     <li class="flex items-center justify-between py-2 text-sm">
       <div class="flex items-center gap-2">
         {% if u.avatar_url %}
           <img src="{{ u.avatar_url }}" class="w-6 h-6 rounded-full" alt="" />
         {% endif %}
-        <span class="font-medium">{{ u.name }}</span>
-        <span class="text-stone-400 text-xs">{{ u.email }}</span>
-        {% if u.is_admin %}<span class="text-xs bg-amber-100 text-amber-800 rounded px-1.5 py-0.5 font-semibold">Admin</span>{% endif %}
+        <span class="font-medium text-forest-800">{{ u.name }}</span>
+        <span class="text-forest-300 text-xs">{{ u.email }}</span>
+        {% if u.is_admin %}<span class="text-xs bg-forest-100 text-forest-600 rounded px-1.5 py-0.5 font-semibold">Admin</span>{% endif %}
       </div>
       {% if u.id != user.id %}
       <form method="post" action="/admin/users/{{ u.id }}/toggle-admin">
-        <button class="text-stone-500 hover:text-stone-700 text-xs font-medium">
+        <button class="text-forest-400 hover:text-forest-600 text-xs font-medium">
           {% if u.is_admin %}Remove admin{% else %}Make admin{% endif %}
         </button>
       </form>
@@ -111,13 +110,13 @@
 
 <!-- Season history -->
 {% if all_seasons %}
-<section class="bg-white border border-stone-200 rounded-xl p-5 shadow-sm">
-  <h2 class="font-semibold text-stone-700 mb-3">Season History</h2>
-  <ul class="divide-y divide-stone-100 text-sm">
+<section class="bg-white border border-forest-100 rounded-xl p-5 shadow-sm">
+  <h2 class="font-semibold text-forest-600 mb-3">Season History</h2>
+  <ul class="divide-y divide-forest-50 text-sm">
     {% for s in all_seasons %}
     <li class="py-2 flex justify-between">
-      <span class="font-medium">{{ s.name }}</span>
-      <span class="font-mono text-stone-400 text-xs">{{ s.state.value }}</span>
+      <span class="font-medium text-forest-800">{{ s.name }}</span>
+      <span class="font-mono text-forest-300 text-xs">{{ s.state.value }}</span>
     </li>
     {% endfor %}
   </ul>

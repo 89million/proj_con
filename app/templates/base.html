@@ -5,36 +5,69 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}Book Club{% endblock %}</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            forest: {
+              50:  '#edf2ee',
+              100: '#cfddd3',
+              200: '#a2bfaa',
+              300: '#6f9c7a',
+              400: '#4a7c5a',
+              500: '#2f5e3f',
+              600: '#1d4229',
+              700: '#122b1a',
+              800: '#0b1c11',
+              900: '#060f09',
+            },
+            sound: {
+              50:  '#eef3f8',
+              100: '#cddde9',
+              200: '#97bcd3',
+              300: '#5592b5',
+              400: '#2f6e96',
+              500: '#1a4e70',
+              600: '#10334d',
+              700: '#0a2236',
+              800: '#061521',
+              900: '#030c13',
+            },
+          },
+        },
+      },
+    }
+  </script>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <style>
-    [x-cloak] { display: none !important; }
+    body { background-color: #edf2ee; }
     .drag-handle { cursor: grab; }
     .drag-handle:active { cursor: grabbing; }
     .sortable-ghost { opacity: 0.4; }
   </style>
 </head>
-<body class="bg-stone-50 text-stone-800 min-h-screen font-sans">
+<body class="text-forest-900 min-h-screen font-sans">
 
   <!-- Nav -->
-  <nav class="bg-amber-800 text-white px-6 py-3 flex items-center justify-between shadow-md">
-    <a href="/" class="text-xl font-bold tracking-tight">📚 Book Club</a>
+  <nav class="bg-forest-700 text-white px-6 py-3 flex items-center justify-between shadow-md border-b border-forest-800">
+    <a href="/" class="text-xl font-bold tracking-tight">Book Club</a>
     <div class="flex items-center gap-4 text-sm">
       {% if user %}
         {% if user.avatar_url %}
-          <img src="{{ user.avatar_url }}" class="w-8 h-8 rounded-full border-2 border-amber-200" alt="{{ user.name }}" />
+          <img src="{{ user.avatar_url }}" class="w-8 h-8 rounded-full border-2 border-forest-400" alt="{{ user.name }}" />
         {% endif %}
-        <span class="font-medium">{{ user.name }}</span>
+        <span class="font-medium opacity-90">{{ user.name }}</span>
         {% if user.is_admin %}
-          <a href="/admin" class="bg-amber-600 hover:bg-amber-500 px-3 py-1 rounded text-xs font-semibold">Admin</a>
+          <a href="/admin" class="bg-forest-500 hover:bg-forest-400 px-3 py-1 rounded text-xs font-semibold transition">Admin</a>
         {% endif %}
-        <a href="/auth/logout" class="hover:underline opacity-80">Sign out</a>
+        <a href="/auth/logout" class="hover:underline opacity-60 text-xs">Sign out</a>
       {% else %}
-        <a href="/auth/login" class="bg-white text-amber-800 font-semibold px-4 py-1 rounded hover:bg-amber-100">Sign in with Google</a>
+        <a href="/auth/login" class="bg-white text-forest-700 font-semibold px-4 py-1 rounded hover:bg-forest-50 transition">Sign in with Google</a>
       {% endif %}
     </div>
   </nav>
 
-  <!-- Flash / banner area -->
   {% block banner %}{% endblock %}
 
   <main class="max-w-3xl mx-auto px-4 py-8">
