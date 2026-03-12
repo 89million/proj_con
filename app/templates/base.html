@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}Book Club{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .drag-handle { cursor: grab; }
+    .drag-handle:active { cursor: grabbing; }
+    .sortable-ghost { opacity: 0.4; }
+  </style>
+</head>
+<body class="bg-stone-50 text-stone-800 min-h-screen font-sans">
+
+  <!-- Nav -->
+  <nav class="bg-amber-800 text-white px-6 py-3 flex items-center justify-between shadow-md">
+    <a href="/" class="text-xl font-bold tracking-tight">📚 Book Club</a>
+    <div class="flex items-center gap-4 text-sm">
+      {% if user %}
+        {% if user.avatar_url %}
+          <img src="{{ user.avatar_url }}" class="w-8 h-8 rounded-full border-2 border-amber-200" alt="{{ user.name }}" />
+        {% endif %}
+        <span class="font-medium">{{ user.name }}</span>
+        {% if user.is_admin %}
+          <a href="/admin" class="bg-amber-600 hover:bg-amber-500 px-3 py-1 rounded text-xs font-semibold">Admin</a>
+        {% endif %}
+        <a href="/auth/logout" class="hover:underline opacity-80">Sign out</a>
+      {% else %}
+        <a href="/auth/login" class="bg-white text-amber-800 font-semibold px-4 py-1 rounded hover:bg-amber-100">Sign in with Google</a>
+      {% endif %}
+    </div>
+  </nav>
+
+  <!-- Flash / banner area -->
+  {% block banner %}{% endblock %}
+
+  <main class="max-w-3xl mx-auto px-4 py-8">
+    {% block content %}{% endblock %}
+  </main>
+
+</body>
+</html>

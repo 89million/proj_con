@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Book Club — No Active Season{% endblock %}
+{% block content %}
+<div class="text-center py-16">
+  <h1 class="text-3xl font-bold text-amber-900 mb-4">No Active Season</h1>
+  <p class="text-stone-600 mb-6">There's no book selection round running right now.</p>
+  {% if user.is_admin %}
+    <a href="/admin" class="bg-amber-800 text-white px-6 py-2 rounded-lg font-semibold hover:bg-amber-700 transition">Start a New Season →</a>
+  {% else %}
+    <p class="text-stone-500 text-sm">Ask your admin to start a new season.</p>
+  {% endif %}
+</div>
+{% endblock %}

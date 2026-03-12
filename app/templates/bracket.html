@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Bracket — {{ season.name }}{% endblock %}
+{% block content %}
+
+<h1 class="text-2xl font-bold text-amber-900 mb-1">🏅 Tournament Bracket</h1>
+<p class="text-stone-500 text-sm mb-6">Season: <strong>{{ season.name }}</strong> · Now voting: <strong>{{ round_names.get(current_round, 'Done') }}</strong></p>
+
+<!-- Peer pressure widget -->
+<div
+  hx-get="/partials/waiting-on"
+  hx-trigger="load, every 30s"
+  hx-swap="outerHTML"
+>
+  {% include "partials/waiting_on.html" %}
+</div>
+
+<!-- Seed reference -->
+<details class="mt-4 mb-6">
+  <summary class="cursor-pointer text-sm text-amber-700 font-medium">Show seeds (Borda count results)</summary>
+  <ol class="mt-2 list-none space-y-1 text-sm pl-2">
+    {% for seed in seeds %}
+    <li class="flex gap-2">
+      <span class="w-6 text-right font-bold text-amber-800">#{{ seed.seed }}</span>
+      <span class="font-medium">{{ seed.book.title }}</span>
+      <span class="text-stone-400">— {{ seed.book.author }}</span>
+    </li>
+    {% endfor %}
+  </ol>
+</details>
+
+<!-- Rounds -->
+{% for round_num in [1, 2, 3] %}
+  {% set round_matchups = matchups | selectattr('round', 'equalto', round_num) | list %}
+  {% if round_matchups %}
+  <section class="mb-8">
+    <h2 class="text-lg font-semibold text-stone-700 mb-3">
+      {{ round_names.get(round_num) }}
+      {% if round_num < current_round %}
+        <span class="text-xs text-stone-400 ml-2">✓ complete</span>
+      {% elif round_num == current_round %}
+        <span class="text-xs text-amber-600 ml-2">← voting now</span>
+      {% else %}
+        <span class="text-xs text-stone-300 ml-2">upcoming</span>
+      {% endif %}
+    </h2>
+
+    <div class="space-y-3">
+      {% for matchup in round_matchups %}
+      {% if matchup.book_a_id == matchup.book_b_id %}{% else %}
+      <div class="bg-white border border-stone-200 rounded-xl p-4 shadow-sm">
+        {% set user_pick = user_votes.get(matchup.id) %}
+        {% set is_current = round_num == current_round %}
+        {% set can_vote = is_current and not user_pick and not matchup.winner_id %}
+
+        <div class="text-xs text-stone-400 mb-2">Matchup {{ matchup.position }}</div>
+
+        <!-- Book A -->
+        <div class="flex items-center justify-between gap-3 mb-2">
+          <div class="flex-1">
+            <span class="font-semibold {% if matchup.winner_id == matchup.book_a_id %}text-green-700{% elif matchup.winner_id and matchup.winner_id != matchup.book_a_id %}text-stone-300 line-through{% endif %}">
+              {{ matchup.book_a.title }}
+            </span>
+            <span class="text-stone-400 text-xs"> — {{ matchup.book_a.author }}</span>
+          </div>
+          {% if can_vote %}
+            <form method="post" action="/bracket/vote/{{ matchup.id }}">
+              <input type="hidden" name="book_id" value="{{ matchup.book_a_id }}" />
+              <button class="px-3 py-1 bg-amber-700 text-white text-sm rounded hover:bg-amber-600 transition font-medium">Vote</button>
+            </form>
+          {% elif user_pick == matchup.book_a_id %}
+            <span class="text-xs text-amber-700 font-semibold">✓ your pick</span>
+          {% endif %}
+        </div>
+
+        <div class="text-center text-stone-400 text-xs font-bold my-1">vs</div>
+
+        <!-- Book B -->
+        <div class="flex items-center justify-between gap-3 mt-2">
+          <div class="flex-1">
+            <span class="font-semibold {% if matchup.winner_id == matchup.book_b_id %}text-green-700{% elif matchup.winner_id and matchup.winner_id != matchup.book_b_id %}text-stone-300 line-through{% endif %}">
+              {{ matchup.book_b.title }}
+            </span>
+            <span class="text-stone-400 text-xs"> — {{ matchup.book_b.author }}</span>
+          </div>
+          {% if can_vote %}
+            <form method="post" action="/bracket/vote/{{ matchup.id }}">
+              <input type="hidden" name="book_id" value="{{ matchup.book_b_id }}" />
+              <button class="px-3 py-1 bg-amber-700 text-white text-sm rounded hover:bg-amber-600 transition font-medium">Vote</button>
+            </form>
+          {% elif user_pick == matchup.book_b_id %}
+            <span class="text-xs text-amber-700 font-semibold">✓ your pick</span>
+          {% endif %}
+        </div>
+
+        <!-- Vote tally (shown after round is complete or if user has voted) -->
+        {% if matchup.winner_id or user_pick %}
+          <div class="mt-3 pt-2 border-t border-stone-100 text-xs text-stone-500">
+            {% set a_votes = matchup.votes | selectattr('book_id', 'equalto', matchup.book_a_id) | list | length %}
+            {% set b_votes = matchup.votes | selectattr('book_id', 'equalto', matchup.book_b_id) | list | length %}
+            Votes: {{ matchup.book_a.title }} {{ a_votes }} — {{ matchup.book_b.title }} {{ b_votes }}
+            {% if matchup.winner_id %}
+              · <span class="text-green-700 font-semibold">Winner: {{ matchup.winner.title }}</span>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+{% endfor %}
+
+{% endblock %}
