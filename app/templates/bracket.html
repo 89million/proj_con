@@ -92,14 +92,25 @@
 
         <!-- Vote tally -->
         {% if matchup.winner_id or user_pick %}
+          {% set a_votes = matchup.votes | selectattr('book_id', 'equalto', matchup.book_a_id) | list | length %}
+          {% set b_votes = matchup.votes | selectattr('book_id', 'equalto', matchup.book_b_id) | list | length %}
+          {% set mtie = matchup_tiebreakers.get(matchup.id) if matchup_tiebreakers else none %}
           <div class="mt-3 pt-2 border-t border-forest-50 text-xs text-forest-400">
-            {% set a_votes = matchup.votes | selectattr('book_id', 'equalto', matchup.book_a_id) | list | length %}
-            {% set b_votes = matchup.votes | selectattr('book_id', 'equalto', matchup.book_b_id) | list | length %}
             Votes: {{ matchup.book_a.title }} {{ a_votes }} — {{ matchup.book_b.title }} {{ b_votes }}
             {% if matchup.winner_id %}
               · <span class="text-forest-600 font-semibold">Winner: {{ matchup.winner.title }}</span>
             {% endif %}
           </div>
+          {% if mtie == 'veteran' %}
+            <div class="mt-1 text-xs text-sound-500">
+              ⚖️ Tie — decided by prior nominations
+              ({{ prior_nominations.get(matchup.winner_id, 0) }} vs {{ prior_nominations.get(matchup.book_a_id if matchup.winner_id == matchup.book_b_id else matchup.book_b_id, 0) }})
+            </div>
+          {% elif mtie == 'first_vote' %}
+            <div class="mt-1 text-xs text-sound-500">
+              ⚖️ Tie — decided by earliest vote received
+            </div>
+          {% endif %}
         {% endif %}
       </div>
       {% endif %}

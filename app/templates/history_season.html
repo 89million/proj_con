@@ -31,6 +31,7 @@
             <th class="px-4 py-2 text-left">Book</th>
             <th class="px-4 py-2 text-left">Author</th>
             <th class="px-4 py-2 text-left">Submitted by</th>
+            {% if borda_scores %}<th class="px-4 py-2 text-right">Pts</th>{% endif %}
           </tr>
         </thead>
         <tbody class="divide-y divide-forest-50">
@@ -40,11 +41,26 @@
               <td class="px-4 py-2 font-medium text-forest-800">
                 {{ seed.book.title }}
                 {% if seed.book.id == winner_book.id %}<span class="ml-1 text-xs">🏆</span>{% endif %}
+                {% set stie = seed_tiebreakers.get(seed.book.id) if seed_tiebreakers else none %}
+                {% if stie == 'veteran' %}
+                  <span class="ml-2 inline-flex items-center gap-1 text-xs text-sound-500 bg-sound-50 border border-sound-200 rounded px-1.5 py-0.5"
+                        title="Equal Borda points — seed decided by prior nomination count">
+                    ⚖️ veteran ({{ prior_nominations.get(seed.book.id, 0) }} prior noms)
+                  </span>
+                {% elif stie == 'submission_order' %}
+                  <span class="ml-2 inline-flex items-center gap-1 text-xs text-forest-400 bg-forest-50 border border-forest-200 rounded px-1.5 py-0.5"
+                        title="Equal Borda points and equal prior nominations — seed decided by submission order">
+                    ⚖️ submitted first
+                  </span>
+                {% endif %}
               </td>
               <td class="px-4 py-2 text-forest-400">{{ seed.book.author }}</td>
               <td class="px-4 py-2 text-forest-400">
                 {% if seed.book.submitter %}{{ seed.book.submitter.name }}{% endif %}
               </td>
+              {% if borda_scores %}
+                <td class="px-4 py-2 text-right font-mono text-forest-500">{{ borda_scores.get(seed.book.id, 0) }}</td>
+              {% endif %}
             </tr>
           {% endfor %}
         </tbody>
@@ -67,6 +83,9 @@
           <div class="space-y-3">
             {% for matchup in round_matchups %}
               {% if matchup.book_a_id != matchup.book_b_id %}
+                {% set votes_a = matchup.votes | selectattr('book_id', 'equalto', matchup.book_a_id) | list | length %}
+                {% set votes_b = matchup.votes | selectattr('book_id', 'equalto', matchup.book_b_id) | list | length %}
+                {% set mtie = matchup_tiebreakers.get(matchup.id) if matchup_tiebreakers else none %}
                 <div class="bg-white border border-forest-100 rounded-xl p-4 shadow-sm text-sm">
                   <div class="flex items-center gap-2 mb-1">
                     <span class="{% if matchup.winner_id == matchup.book_a_id %}font-bold text-forest-700{% else %}text-forest-300 line-through{% endif %}">
@@ -77,7 +96,21 @@
                       <span class="text-forest-500 text-xs ml-auto font-semibold">Winner ✓</span>
                     {% endif %}
                   </div>
-                  <div class="text-center text-forest-200 text-xs my-1">vs</div>
+                  {% if votes_a or votes_b %}
+                    <div class="text-center text-forest-400 text-xs font-mono my-1">{{ votes_a }} – {{ votes_b }}</div>
+                    {% if mtie == 'veteran' %}
+                      <div class="text-center text-xs text-sound-500 mb-1">
+                        ⚖️ Tie — decided by prior nominations
+                        ({{ prior_nominations.get(matchup.winner_id, 0) }} vs {{ prior_nominations.get(matchup.book_a_id if matchup.winner_id == matchup.book_b_id else matchup.book_b_id, 0) }})
+                      </div>
+                    {% elif mtie == 'first_vote' %}
+                      <div class="text-center text-xs text-sound-500 mb-1">
+                        ⚖️ Tie — decided by earliest vote received
+                      </div>
+                    {% endif %}
+                  {% else %}
+                    <div class="text-center text-forest-200 text-xs my-1">vs</div>
+                  {% endif %}
                   <div class="flex items-center gap-2 mt-1">
                     <span class="{% if matchup.winner_id == matchup.book_b_id %}font-bold text-forest-700{% else %}text-forest-300 line-through{% endif %}">
                       {{ matchup.book_b.title }}

@@ -36,6 +36,60 @@ def build_round_names(max_round: int) -> dict[int, str]:
     return {max_round - i: label for i, label in enumerate(_ROUND_LABELS) if max_round - i >= 1}
 
 
+def matchup_tiebreaker(
+    matchup: "BracketMatchup",  # noqa: F821
+    prior_nominations: dict[int, int],
+) -> str | None:
+    """Return which tiebreaker decided a resolved matchup, or None if votes were decisive.
+
+    Returns:
+        None          — votes were not tied (or no votes cast)
+        "veteran"     — tie broken by prior nomination count
+        "first_vote"  — tie broken by earliest first-vote timestamp
+    """
+    if not matchup.votes or matchup.winner_id is None:
+        return None
+    votes_a = sum(1 for v in matchup.votes if v.book_id == matchup.book_a_id)
+    votes_b = sum(1 for v in matchup.votes if v.book_id == matchup.book_b_id)
+    if votes_a != votes_b:
+        return None
+    a_noms = prior_nominations.get(matchup.book_a_id, 0)
+    b_noms = prior_nominations.get(matchup.book_b_id, 0)
+    if a_noms != b_noms:
+        return "veteran"
+    return "first_vote"
+
+
+def seed_tiebreakers(
+    seeds: list,  # list[Seed]
+    borda_scores: dict[int, int],
+    prior_nominations: dict[int, int],
+) -> dict[int, str | None]:
+    """For each book_id in seeds, return which tiebreaker determined its seed position.
+
+    Returns:
+        {book_id: None}               — Borda score was unique (no tiebreaker needed)
+        {book_id: "veteran"}          — tie broken by prior nomination count
+        {book_id: "submission_order"} — tie broken by submission timestamp
+    """
+    from collections import defaultdict
+
+    score_groups: dict[int, list] = defaultdict(list)
+    for s in seeds:
+        score_groups[borda_scores.get(s.book_id, 0)].append(s)
+
+    result: dict[int, str | None] = {}
+    for group in score_groups.values():
+        if len(group) == 1:
+            result[group[0].book_id] = None
+            continue
+        noms = {s.book_id: prior_nominations.get(s.book_id, 0) for s in group}
+        reason = "veteran" if len(set(noms.values())) > 1 else "submission_order"
+        for s in group:
+            result[s.book_id] = reason
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Dependency helpers
 # ---------------------------------------------------------------------------
@@ -355,6 +409,9 @@ async def bracket_page(
     max_round = max((m.round for m in all_matchups), default=1)
     round_names = build_round_names(max_round)
 
+    prior_nominations = await crud.get_prior_nomination_counts(db, season.id)
+    matchup_tiebreakers = {m.id: matchup_tiebreaker(m, prior_nominations) for m in all_matchups}
+
     return templates.TemplateResponse(
         "bracket.html",
         {
@@ -367,6 +424,8 @@ async def bracket_page(
             "user_votes": user_votes,
             "waiting_on": waiting_on,
             "round_names": round_names,
+            "prior_nominations": prior_nominations,
+            "matchup_tiebreakers": matchup_tiebreakers,
         },
     )
 
@@ -473,6 +532,17 @@ async def history_season_page(
     max_round = max((m.round for m in matchups), default=1)
     round_names = build_round_names(max_round)
 
+    # Borda scores: (N_books - rank) per vote, summed per book
+    all_borda_votes = await crud.get_all_borda_votes_for_season(db, season_id)
+    n_books = len(books)
+    borda_scores: dict[int, int] = {}
+    for vote in all_borda_votes:
+        borda_scores[vote.book_id] = borda_scores.get(vote.book_id, 0) + (n_books - vote.rank)
+
+    prior_nominations = await crud.get_prior_nomination_counts(db, season_id)
+    matchup_ties = {m.id: matchup_tiebreaker(m, prior_nominations) for m in matchups}
+    seed_ties = seed_tiebreakers(seeds, borda_scores, prior_nominations)
+
     return templates.TemplateResponse(
         "history_season.html",
         {
@@ -484,6 +554,10 @@ async def history_season_page(
             "matchups": matchups,
             "winner_book": winner_book,
             "round_names": round_names,
+            "borda_scores": borda_scores,
+            "prior_nominations": prior_nominations,
+            "matchup_tiebreakers": matchup_ties,
+            "seed_tiebreakers": seed_ties,
         },
     )
 
