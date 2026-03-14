@@ -4,35 +4,41 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}Book Club{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
       theme: {
         extend: {
+          fontFamily: {
+            serif: ['Lora', 'Georgia', 'serif'],
+          },
           colors: {
             forest: {
-              50:  '#edf2ee',
-              100: '#cfddd3',
-              200: '#a2bfaa',
-              300: '#6f9c7a',
-              400: '#4a7c5a',
-              500: '#2f5e3f',
-              600: '#1d4229',
-              700: '#122b1a',
-              800: '#0b1c11',
-              900: '#060f09',
+              50:  '#f2f9f0',
+              100: '#d9f0d4',
+              200: '#acd9a4',
+              300: '#75bc6a',
+              400: '#4a9e3d',
+              500: '#337a2b',
+              600: '#215a1b',
+              700: '#153d12',
+              800: '#0c260b',
+              900: '#061306',
             },
             sound: {
-              50:  '#eef3f8',
-              100: '#cddde9',
-              200: '#97bcd3',
-              300: '#5592b5',
-              400: '#2f6e96',
-              500: '#1a4e70',
-              600: '#10334d',
-              700: '#0a2236',
-              800: '#061521',
-              900: '#030c13',
+              50:  '#fdf5f7',
+              100: '#fae0e7',
+              200: '#f4b8c8',
+              300: '#ea87a4',
+              400: '#db5680',
+              500: '#c42e5d',
+              600: '#971f47',
+              700: '#6a1231',
+              800: '#3f0a1e',
+              900: '#1f040f',
             },
           },
         },
@@ -41,7 +47,7 @@
   </script>
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <style>
-    body { background-color: #edf2ee; }
+    body { background-color: #f2f9f0; }
     .drag-handle { cursor: grab; }
     .drag-handle:active { cursor: grabbing; }
     .sortable-ghost { opacity: 0.4; }
@@ -50,8 +56,8 @@
 <body class="text-forest-900 min-h-screen font-sans">
 
   <!-- Nav -->
-  <nav class="bg-forest-700 text-white px-6 py-3 flex items-center justify-between shadow-md border-b border-forest-800">
-    <a href="/" class="text-xl font-bold tracking-tight">Book Club</a>
+  <nav class="bg-forest-700 text-white px-6 py-3 flex items-center justify-between shadow-md border-b border-forest-600">
+    <a href="/" class="font-serif text-xl font-semibold tracking-tight">Book Club</a>
     <div class="flex items-center gap-4 text-sm">
       {% if user %}
         {% if user.avatar_url %}
