@@ -20,6 +20,9 @@
     <p class="text-forest-600 font-semibold mb-1">You submitted:</p>
     <p class="text-lg font-bold text-forest-800">{{ my_book.title }}</p>
     <p class="text-forest-400 text-sm">by {{ my_book.author }} · {{ my_book.page_count }} pages</p>
+    {% if my_book.description %}
+    <p class="text-forest-500 text-sm italic mt-1">{{ my_book.description }}</p>
+    {% endif %}
   </div>
 
 {% else %}
@@ -58,6 +61,27 @@
         placeholder="e.g. 662"
       />
     </div>
+    <div>
+      <label class="block text-sm font-medium text-forest-700 mb-1" for="description">
+        Description <span class="text-forest-300 font-normal">(optional)</span>
+      </label>
+      <div id="description-wrapper">
+        <textarea id="description" name="description" rows="3"
+          class="w-full border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900"
+          placeholder="A sentence or two to help the group decide…"
+        >{{ form.description if form is defined and form.description else '' }}</textarea>
+      </div>
+      <button type="button"
+        hx-post="/api/suggest-description"
+        hx-include="[name='title'],[name='author']"
+        hx-target="#description-wrapper"
+        hx-swap="innerHTML"
+        hx-indicator="#suggest-spinner"
+        class="mt-1 text-xs text-sound-400 hover:text-sound-500 underline">
+        Suggest description ✨
+      </button>
+      <span id="suggest-spinner" class="htmx-indicator text-xs text-forest-300 ml-2">Generating…</span>
+    </div>
     <button type="submit" class="w-full bg-forest-600 text-white py-2 rounded-lg font-semibold hover:bg-forest-500 transition">
       Submit Book
     </button>
@@ -79,13 +103,18 @@
   <h2 class="text-base font-semibold text-forest-600 mb-3">Submissions so far ({{ all_submissions|length }})</h2>
   <ul class="space-y-2">
     {% for book in all_submissions %}
-    <li class="flex items-center gap-3 bg-white border border-forest-100 rounded-lg px-4 py-3 shadow-sm">
-      <div class="flex-1">
-        <span class="font-medium text-forest-800">{{ book.title }}</span>
-        <span class="text-forest-400 text-sm"> by {{ book.author }}</span>
-        <span class="text-forest-300 text-xs ml-2">({{ book.page_count }}pp)</span>
+    <li class="bg-white border border-forest-100 rounded-lg px-4 py-3 shadow-sm">
+      <div class="flex items-center gap-3">
+        <div class="flex-1">
+          <span class="font-medium text-forest-800">{{ book.title }}</span>
+          <span class="text-forest-400 text-sm"> by {{ book.author }}</span>
+          <span class="text-forest-300 text-xs ml-2">({{ book.page_count }}pp)</span>
+        </div>
+        <span class="text-xs text-forest-300">{{ book.submitter.name }}</span>
       </div>
-      <span class="text-xs text-forest-300">{{ book.submitter.name }}</span>
+      {% if book.description %}
+      <p class="text-forest-400 text-xs italic mt-1">{{ book.description }}</p>
+      {% endif %}
     </li>
     {% endfor %}
   </ul>

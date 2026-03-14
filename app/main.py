@@ -258,6 +258,7 @@ async def submit_book(
     title: str = Form(...),
     author: str = Form(...),
     page_count: int = Form(...),
+    description: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_user),
 ):
@@ -295,11 +296,18 @@ async def submit_book(
                 "waiting_on": waiting_on,
                 "all_submissions": all_submissions,
                 "errors": errors,
-                "form": {"title": title, "author": author, "page_count": page_count},
+                "form": {
+                    "title": title,
+                    "author": author,
+                    "page_count": page_count,
+                    "description": description,
+                },
             },
         )
 
-    await crud.create_book(db, title, author, page_count, user.id, season.id)
+    await crud.create_book(
+        db, title, author, page_count, user.id, season.id, description=description or None
+    )
     await state.maybe_advance_from_submit(db, season)
 
     return RedirectResponse("/submit", status_code=302)
@@ -589,8 +597,38 @@ async def history_season_page(
 
 
 # ---------------------------------------------------------------------------
-# Partials (HTMX polling)
+# Partials (HTMX polling) and API helpers
 # ---------------------------------------------------------------------------
+
+
+@app.post("/api/suggest-description", response_class=HTMLResponse)
+async def suggest_description(
+    title: str = Form(...),
+    author: str = Form(...),
+    _user: User = Depends(require_user),
+):
+    """Return a pre-filled description textarea via HTMX swap."""
+    css = (
+        "w-full border border-forest-200 rounded-lg px-3 py-2 text-sm "
+        "focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900"
+    )
+    try:
+        from google import genai as google_genai
+
+        client = google_genai.Client(api_key=settings.gemini_api_key)
+        result = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=(
+                f"Write exactly 2 sentences describing the book '{title}' by {author}. "
+                "Be concise and informative. No preamble, no quotes around your answer."
+            ),
+        )
+        text = result.text.strip()
+    except Exception:
+        text = ""
+    return HTMLResponse(
+        f'<textarea id="description" name="description" rows="3" class="{css}">{text}</textarea>'
+    )
 
 
 @app.get("/partials/waiting-on", response_class=HTMLResponse)
@@ -812,10 +850,11 @@ async def edit_book(
     title: str = Form(...),
     author: str = Form(...),
     page_count: int = Form(...),
+    description: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    await crud.update_book(db, book_id, title, author, page_count)
+    await crud.update_book(db, book_id, title, author, page_count, description=description or None)
     return RedirectResponse("/admin", status_code=302)
 
 

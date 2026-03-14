@@ -24,6 +24,9 @@
         <li class="text-forest-800">
           <span class="font-medium">{{ book.title }}</span>
           <span class="text-forest-400 text-sm"> — {{ book.author }}</span>
+          {% if book.description %}
+          <p class="text-forest-400 text-xs italic mt-0.5 ml-4">{{ book.description }}</p>
+          {% endif %}
         </li>
       {% endfor %}
     </ol>
@@ -50,6 +53,9 @@
           <span class="font-medium text-forest-800">{{ book.title }}</span>
           <span class="text-forest-400 text-sm"> — {{ book.author }}</span>
           <span class="text-forest-300 text-xs ml-1">({{ book.page_count }}pp)</span>
+          {% if book.description %}
+          <p class="text-forest-400 text-xs italic mt-0.5">{{ book.description }}</p>
+          {% endif %}
         </div>
         <input type="hidden" name="rank_{{ book.id }}" class="rank-input" value="" />
       </li>

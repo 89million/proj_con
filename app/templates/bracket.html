@@ -59,6 +59,9 @@
               {{ matchup.book_a.title }}
             </span>
             <span class="text-forest-300 text-xs"> — {{ matchup.book_a.author }}</span>
+            {% if matchup.book_a.description %}
+            <p class="text-forest-400 text-xs italic mt-0.5">{{ matchup.book_a.description }}</p>
+            {% endif %}
           </div>
           {% if can_vote %}
             <form method="post" action="/bracket/vote/{{ matchup.id }}">
@@ -79,6 +82,9 @@
               {{ matchup.book_b.title }}
             </span>
             <span class="text-forest-300 text-xs"> — {{ matchup.book_b.author }}</span>
+            {% if matchup.book_b.description %}
+            <p class="text-forest-400 text-xs italic mt-0.5">{{ matchup.book_b.description }}</p>
+            {% endif %}
           </div>
           {% if can_vote %}
             <form method="post" action="/bracket/vote/{{ matchup.id }}">

@@ -53,6 +53,9 @@
                     ⚖️ submitted first
                   </span>
                 {% endif %}
+                {% if seed.book.description %}
+                <p class="text-forest-400 text-xs italic mt-0.5 font-normal">{{ seed.book.description }}</p>
+                {% endif %}
               </td>
               <td class="px-4 py-2 text-forest-400">{{ seed.book.author }}</td>
               <td class="px-4 py-2 text-forest-400">

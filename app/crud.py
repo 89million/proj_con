@@ -203,11 +203,13 @@ async def create_book(
     page_count: int,
     submitter_id: int,
     season_id: int,
+    description: str | None = None,
 ) -> Book:
     book = Book(
         title=title,
         author=author,
         page_count=page_count,
+        description=description,
         submitter_id=submitter_id,
         season_id=season_id,
     )
@@ -635,7 +637,12 @@ async def create_user(db: AsyncSession, name: str, email: str) -> User:
 
 
 async def update_book(
-    db: AsyncSession, book_id: int, title: str, author: str, page_count: int
+    db: AsyncSession,
+    book_id: int,
+    title: str,
+    author: str,
+    page_count: int,
+    description: str | None = None,
 ) -> Book | None:
     book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
     if book is None:
@@ -643,6 +650,7 @@ async def update_book(
     book.title = title
     book.author = author
     book.page_count = page_count
+    book.description = description
     await db.commit()
     return book
 

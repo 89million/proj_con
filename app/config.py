@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://bookclub:bookclub@localhost:5432/bookclub"
     app_base_url: str = "http://localhost:8000"
     allowed_emails: str = ""  # comma-separated; empty = allow all (dev only)
+    gemini_api_key: str = ""
 
     def is_email_allowed(self, email: str) -> bool:
         if not self.allowed_emails.strip():
