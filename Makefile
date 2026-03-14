@@ -30,4 +30,4 @@ test: unit integration
 cov:
 	pytest tests/ --cov=app --cov-report=term-missing
 
-ci: build-env install lint test
+ci: install lint test
