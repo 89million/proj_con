@@ -8,7 +8,7 @@ build-env:
 
 install:
 	pip install uv
-	uv pip install -r requirements.txt -r requirements-dev.txt
+	uv pip install --system -r requirements.txt -r requirements-dev.txt
 
 format:
 	isort app/ tests/
