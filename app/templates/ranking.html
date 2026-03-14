@@ -38,7 +38,8 @@
   {% endif %}
 
   <form method="post" action="/ranking" id="ranking-form" class="mt-6">
-    <ul id="sortable-list" class="space-y-2 mb-4">
+    <p class="text-xs font-semibold text-forest-400 uppercase tracking-wide mb-1">⬆ Most wanted</p>
+    <ul id="sortable-list" class="space-y-2 mb-1">
       {% for book in books %}
       <li
         class="flex items-center gap-3 bg-white border border-forest-100 rounded-xl px-4 py-3 shadow-sm cursor-grab active:cursor-grabbing select-none"
@@ -54,6 +55,7 @@
       </li>
       {% endfor %}
     </ul>
+    <p class="text-xs font-semibold text-forest-400 uppercase tracking-wide mt-1 mb-4">⬇ Least wanted</p>
     <button type="submit" id="submit-btn" class="w-full bg-forest-600 text-white py-2 rounded-lg font-semibold hover:bg-forest-500 transition">
       Submit My Ranking
     </button>
