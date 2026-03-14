@@ -62,6 +62,15 @@
       Submit Book
     </button>
   </form>
+
+  <div class="mt-4 text-center">
+    <form method="post" action="/submit/opt-out"
+          onsubmit="return confirm('Skip this season? The admin can re-add you later.')">
+      <button type="submit" class="text-sm text-forest-300 hover:text-sound-400 underline">
+        Skip this season
+      </button>
+    </form>
+  </div>
 {% endif %}
 
 <!-- All submissions so far -->

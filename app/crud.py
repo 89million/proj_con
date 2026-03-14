@@ -11,6 +11,7 @@ from app.models import (
     BracketVote,
     ReadBook,
     Season,
+    SeasonParticipant,
     SeasonState,
     Seed,
     User,
@@ -60,6 +61,70 @@ async def get_all_seasons_with_books(db: AsyncSession) -> list[Season]:
         select(Season).options(selectinload(Season.books)).order_by(Season.created_at.desc())
     )
     return list(result.scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# Season participants
+# ---------------------------------------------------------------------------
+
+
+async def add_participant(db: AsyncSession, season_id: int, user_id: int) -> SeasonParticipant:
+    """Enroll a user in a season. Safe to call if already enrolled (no-op)."""
+    existing = await db.execute(
+        select(SeasonParticipant).where(
+            and_(SeasonParticipant.season_id == season_id, SeasonParticipant.user_id == user_id)
+        )
+    )
+    sp = existing.scalar_one_or_none()
+    if sp is not None:
+        return sp
+    sp = SeasonParticipant(season_id=season_id, user_id=user_id)
+    db.add(sp)
+    await db.commit()
+    await db.refresh(sp)
+    return sp
+
+
+async def remove_participant(db: AsyncSession, season_id: int, user_id: int) -> bool:
+    existing = await db.execute(
+        select(SeasonParticipant).where(
+            and_(SeasonParticipant.season_id == season_id, SeasonParticipant.user_id == user_id)
+        )
+    )
+    sp = existing.scalar_one_or_none()
+    if sp is None:
+        return False
+    await db.delete(sp)
+    await db.commit()
+    return True
+
+
+async def get_participants_for_season(db: AsyncSession, season_id: int) -> list[User]:
+    result = await db.execute(
+        select(User)
+        .join(SeasonParticipant, SeasonParticipant.user_id == User.id)
+        .where(SeasonParticipant.season_id == season_id)
+        .order_by(User.name)
+    )
+    return list(result.scalars().all())
+
+
+async def count_participants(db: AsyncSession, season_id: int) -> int:
+    result = await db.execute(
+        select(func.count())
+        .select_from(SeasonParticipant)
+        .where(SeasonParticipant.season_id == season_id)
+    )
+    return result.scalar_one()
+
+
+async def is_participant(db: AsyncSession, season_id: int, user_id: int) -> bool:
+    result = await db.execute(
+        select(SeasonParticipant).where(
+            and_(SeasonParticipant.season_id == season_id, SeasonParticipant.user_id == user_id)
+        )
+    )
+    return result.scalar_one_or_none() is not None
 
 
 # ---------------------------------------------------------------------------
@@ -374,8 +439,7 @@ async def save_bracket_vote(
 
 
 async def count_bracket_voters_for_round(db: AsyncSession, season_id: int, round_num: int) -> int:
-    """Number of distinct users who have voted on ALL real (non-bye) matchups in this round."""
-    # Only count non-bye matchups (byes have book_a_id == book_b_id, no voting needed)
+    """Number of distinct participants who have voted on ALL real (non-bye) matchups in round."""
     matchup_result = await db.execute(
         select(BracketMatchup.id).where(
             and_(
@@ -389,12 +453,15 @@ async def count_bracket_voters_for_round(db: AsyncSession, season_id: int, round
     if not matchup_ids:
         return 0
 
+    participant_subq = select(SeasonParticipant.user_id).where(
+        SeasonParticipant.season_id == season_id
+    )
     matchup_count = len(matchup_ids)
 
-    # Users who have voted in all real matchups of this round
     result = await db.execute(
         select(BracketVote.user_id)
         .where(BracketVote.matchup_id.in_(matchup_ids))
+        .where(BracketVote.user_id.in_(participant_subq))
         .group_by(BracketVote.user_id)
         .having(func.count(BracketVote.matchup_id) == matchup_count)
     )
@@ -437,6 +504,12 @@ async def get_prior_nomination_counts(db: AsyncSession, season_id: int) -> dict[
 
 async def delete_season(db: AsyncSession, season_id: int) -> bool:
     """Delete a season and all associated data (cascade order matters)."""
+    participants = await db.execute(
+        select(SeasonParticipant).where(SeasonParticipant.season_id == season_id)
+    )
+    for p in participants.scalars().all():
+        await db.delete(p)
+
     matchup_ids_result = await db.execute(
         select(BracketMatchup.id).where(BracketMatchup.season_id == season_id)
     )
@@ -477,6 +550,11 @@ async def delete_user(db: AsyncSession, user_id: int, reassign_read_books_to: in
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
     if user is None:
         return False
+
+    # Remove season participations
+    sps = await db.execute(select(SeasonParticipant).where(SeasonParticipant.user_id == user_id))
+    for sp in sps.scalars().all():
+        await db.delete(sp)
 
     # Reassign read books added by this user
     read_books = await db.execute(select(ReadBook).where(ReadBook.added_by == user_id))
@@ -553,16 +631,30 @@ async def delete_book(db: AsyncSession, book_id: int) -> bool:
 
 
 async def users_who_havent_submitted(db: AsyncSession, season_id: int) -> list[User]:
+    participant_subq = select(SeasonParticipant.user_id).where(
+        SeasonParticipant.season_id == season_id
+    )
     submitted_subq = select(Book.submitter_id).where(Book.season_id == season_id)
     result = await db.execute(
-        select(User).where(User.id.notin_(submitted_subq)).order_by(User.name)
+        select(User)
+        .where(User.id.in_(participant_subq))
+        .where(User.id.notin_(submitted_subq))
+        .order_by(User.name)
     )
     return list(result.scalars().all())
 
 
 async def users_who_havent_ranked(db: AsyncSession, season_id: int) -> list[User]:
+    participant_subq = select(SeasonParticipant.user_id).where(
+        SeasonParticipant.season_id == season_id
+    )
     ranked_subq = select(BordaVote.user_id.distinct()).where(BordaVote.season_id == season_id)
-    result = await db.execute(select(User).where(User.id.notin_(ranked_subq)).order_by(User.name))
+    result = await db.execute(
+        select(User)
+        .where(User.id.in_(participant_subq))
+        .where(User.id.notin_(ranked_subq))
+        .order_by(User.name)
+    )
     return list(result.scalars().all())
 
 
@@ -583,6 +675,9 @@ async def users_who_havent_voted_round(
     if not matchup_ids:
         return []
 
+    participant_subq = select(SeasonParticipant.user_id).where(
+        SeasonParticipant.season_id == season_id
+    )
     matchup_count = len(matchup_ids)
     voted_all_subq = (
         select(BracketVote.user_id)
@@ -591,6 +686,9 @@ async def users_who_havent_voted_round(
         .having(func.count(BracketVote.matchup_id) == matchup_count)
     )
     result = await db.execute(
-        select(User).where(User.id.notin_(voted_all_subq)).order_by(User.name)
+        select(User)
+        .where(User.id.in_(participant_subq))
+        .where(User.id.notin_(voted_all_subq))
+        .order_by(User.name)
     )
     return list(result.scalars().all())

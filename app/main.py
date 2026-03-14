@@ -203,6 +203,25 @@ async def submit_book(
     return RedirectResponse("/submit", status_code=302)
 
 
+@app.post("/submit/opt-out", response_class=HTMLResponse)
+async def opt_out_of_season(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    season = await crud.get_active_season(db)
+    if season is None or season.state != SeasonState.submit:
+        return RedirectResponse("/", status_code=302)
+
+    # Can't opt out after submitting a book
+    existing = await crud.get_book_submitted_by_user(db, user.id, season.id)
+    if existing:
+        return RedirectResponse("/submit", status_code=302)
+
+    await crud.remove_participant(db, season.id, user.id)
+    await state.maybe_advance_from_submit(db, season)
+    return RedirectResponse("/", status_code=302)
+
+
 # ---------------------------------------------------------------------------
 # Ranking state
 # ---------------------------------------------------------------------------
@@ -446,6 +465,13 @@ async def admin_page(
     all_users = await crud.get_all_users(db)
     active_season = await crud.get_active_season(db)
 
+    season_participants = []
+    season_non_participants = []
+    if active_season:
+        season_participants = await crud.get_participants_for_season(db, active_season.id)
+        participant_ids = {u.id for u in season_participants}
+        season_non_participants = [u for u in all_users if u.id not in participant_ids]
+
     return templates.TemplateResponse(
         "admin.html",
         {
@@ -455,6 +481,8 @@ async def admin_page(
             "all_seasons": all_seasons,
             "all_users": all_users,
             "active_season": active_season,
+            "season_participants": season_participants,
+            "season_non_participants": season_non_participants,
         },
     )
 
@@ -466,7 +494,10 @@ async def create_season(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_admin),
 ):
-    await crud.create_season(db, name, page_limit)
+    season = await crud.create_season(db, name, page_limit)
+    all_users = await crud.get_all_users(db)
+    for u in all_users:
+        await crud.add_participant(db, season.id, u.id)
     return RedirectResponse("/admin", status_code=302)
 
 
@@ -562,6 +593,35 @@ async def force_advance_season(
     elif season.state == SeasonState.bracket:
         await crud.set_season_state(db, season, SeasonState.complete)
 
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/season/{season_id}/participants/add", response_class=HTMLResponse)
+async def admin_add_participant(
+    season_id: int,
+    user_id: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    await crud.add_participant(db, season_id, user_id)
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post(
+    "/admin/season/{season_id}/participants/remove/{user_id}",
+    response_class=HTMLResponse,
+)
+async def admin_remove_participant(
+    season_id: int,
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    await crud.remove_participant(db, season_id, user_id)
+    season = await crud.get_season_by_id(db, season_id)
+    if season:
+        await state.maybe_advance_from_submit(db, season)
+        await state.maybe_advance_from_ranking(db, season)
     return RedirectResponse("/admin", status_code=302)
 
 

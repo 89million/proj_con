@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base, get_db
 from app.main import app, require_admin, require_user
-from app.models import Season, SeasonState, User
+from app.models import Season, SeasonParticipant, SeasonState, User
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -80,11 +80,15 @@ async def extra_user(db):
 
 
 @pytest_asyncio.fixture
-async def active_season(db, test_admin):
+async def active_season(db, test_admin, test_user):
     season = Season(name="Test Season", state=SeasonState.submit, page_limit=400)
     db.add(season)
     await db.commit()
     await db.refresh(season)
+    # Enroll both default users as participants
+    db.add(SeasonParticipant(season_id=season.id, user_id=test_admin.id))
+    db.add(SeasonParticipant(season_id=season.id, user_id=test_user.id))
+    await db.commit()
     return season
 
 

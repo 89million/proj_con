@@ -7,31 +7,31 @@ from app.models import ReadBook, Season, SeasonState
 
 
 async def maybe_advance_from_submit(db: AsyncSession, season: Season) -> bool:
-    """Advance submit → ranking when every member has submitted."""
+    """Advance submit → ranking when every participant has submitted."""
     if season.state != SeasonState.submit:
         return False
 
     submissions = await crud.count_submissions(db, season.id)
-    total_users = await crud.count_users(db)
+    total_participants = await crud.count_participants(db, season.id)
 
-    if total_users > 0 and submissions >= total_users:
+    if total_participants > 0 and submissions >= total_participants:
         await crud.set_season_state(db, season, SeasonState.ranking)
         return True
     return False
 
 
 async def maybe_advance_from_ranking(db: AsyncSession, season: Season) -> bool:
-    """Advance ranking → bracket when every member has ranked.
+    """Advance ranking → bracket when every participant has ranked.
 
     Also computes Borda seeds and creates the first-round bracket matchups.
     """
     if season.state != SeasonState.ranking:
         return False
 
-    total_users = await crud.count_users(db)
+    total_participants = await crud.count_participants(db, season.id)
     voters = await crud.count_borda_voters(db, season.id)
 
-    if total_users > 0 and voters >= total_users:
+    if total_participants > 0 and voters >= total_participants:
         books = await crud.get_books_for_season(db, season.id)
 
         # Need at least 2 books to run a bracket
@@ -53,7 +53,7 @@ async def maybe_advance_from_ranking(db: AsyncSession, season: Season) -> bool:
 
 
 async def maybe_advance_bracket_round(db: AsyncSession, season: Season) -> bool:
-    """Resolve the current bracket round if all members have voted on real matchups.
+    """Resolve the current bracket round if all participants have voted on real matchups.
 
     Byes (book_a == book_b) are already pre-resolved and don't require votes.
     When only 1 unique winner remains after resolving a round, the season is complete.
@@ -71,9 +71,9 @@ async def maybe_advance_bracket_round(db: AsyncSession, season: Season) -> bool:
     real_matchups = [m for m in matchups if m.book_a_id != m.book_b_id and m.winner_id is None]
 
     if real_matchups:
-        total_users = await crud.count_users(db)
+        total_participants = await crud.count_participants(db, season.id)
         voters_done = await crud.count_bracket_voters_for_round(db, season.id, current_round)
-        if total_users == 0 or voters_done < total_users:
+        if total_participants == 0 or voters_done < total_participants:
             return False
 
         # Resolve winners for real matchups

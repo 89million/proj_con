@@ -31,6 +31,9 @@ class User(Base):
     read_books_added: Mapped[list["ReadBook"]] = relationship(
         "ReadBook", back_populates="added_by_user"
     )
+    season_participations: Mapped[list["SeasonParticipant"]] = relationship(
+        "SeasonParticipant", back_populates="user"
+    )
 
 
 class Season(Base):
@@ -46,6 +49,9 @@ class Season(Base):
     seeds: Mapped[list["Seed"]] = relationship("Seed", back_populates="season")
     matchups: Mapped[list["BracketMatchup"]] = relationship(
         "BracketMatchup", back_populates="season"
+    )
+    participants: Mapped[list["SeasonParticipant"]] = relationship(
+        "SeasonParticipant", back_populates="season"
     )
 
 
@@ -159,3 +165,21 @@ class BracketVote(Base):
     user: Mapped["User"] = relationship("User", back_populates="bracket_votes")
     matchup: Mapped["BracketMatchup"] = relationship("BracketMatchup", back_populates="votes")
     book: Mapped["Book"] = relationship("Book")
+
+
+class SeasonParticipant(Base):
+    """Explicit per-season participation record. Created when a season is started;
+    users can opt out before submitting, and admins can add/remove at any time."""
+
+    __tablename__ = "season_participants"
+    __table_args__ = (
+        UniqueConstraint("season_id", "user_id", name="uq_one_participant_per_season"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    season_id: Mapped[int] = mapped_column(ForeignKey("seasons.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    joined_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    season: Mapped["Season"] = relationship("Season", back_populates="participants")
+    user: Mapped["User"] = relationship("User", back_populates="season_participations")

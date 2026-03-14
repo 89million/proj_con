@@ -1,6 +1,6 @@
 """Integration tests for the book submission flow."""
 
-from app.models import ReadBook
+from app.models import Book, ReadBook
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -69,9 +69,21 @@ async def test_submit_previously_read_non_winner_blocked(
     assert "read" in resp.text.lower()
 
 
-async def test_submit_season_advances_to_ranking(client_as_admin, active_season):
-    """When the only user submits, the season auto-advances to ranking."""
-    # Only test_admin is in the DB (active_season + client_as_admin share the same fixture).
+async def test_submit_season_advances_to_ranking(client_as_admin, active_season, db, test_user):
+    """When all participants submit, the season auto-advances to ranking."""
+    # test_user pre-submits via DB (they're already a participant)
+    db.add(
+        Book(
+            title="User's Pick",
+            author="Another Author",
+            page_count=200,
+            submitter_id=test_user.id,
+            season_id=active_season.id,
+        )
+    )
+    await db.commit()
+
+    # test_admin (last participant) submits — triggers advance
     resp = await client_as_admin.post(
         "/submit", data={"title": "Admin's Pick", "author": "An Author", "page_count": 300}
     )
