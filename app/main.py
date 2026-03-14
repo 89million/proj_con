@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud, state
+from app.config import settings
 from app.auth import (
     build_authorization_url,
     create_session_token,
@@ -91,6 +92,10 @@ async def auth_callback(
         user_info = await exchange_code_for_user_info(code)
     except Exception:
         raise HTTPException(status_code=400, detail="OAuth failed. Please try again.")
+
+    email = user_info.get("email", "")
+    if not settings.is_email_allowed(email):
+        return RedirectResponse("/?error=not_invited", status_code=302)
 
     user = await get_or_create_user(db, user_info)
     token = create_session_token(user.id)
