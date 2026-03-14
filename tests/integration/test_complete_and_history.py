@@ -2,7 +2,7 @@
 
 import pytest_asyncio
 
-from app.models import Book, BracketMatchup, Season, SeasonState
+from app.models import Book, BracketMatchup, Season, SeasonState, Seed
 
 from .conftest import make_client
 
@@ -151,3 +151,89 @@ async def test_history_drilldown_404_for_nonexistent(engine, db, test_user):
     async with make_client(engine, test_user) as client:
         resp = await client.get("/history/99999")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# /history/{season_id} content depth
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def complete_season_with_seeds(db, test_admin, test_user):
+    """Completed season with Seed rows and a resolved bracket matchup.
+
+    book1 (seed #1, winner) vs book2 (seed #2, loser) in round 1.
+    """
+    season = Season(name="Seeded Season", state=SeasonState.complete, page_limit=400)
+    db.add(season)
+    await db.flush()
+    book1 = Book(
+        title="Top Seed Book",
+        author="Seed One Author",
+        page_count=280,
+        submitter_id=test_admin.id,
+        season_id=season.id,
+    )
+    book2 = Book(
+        title="Second Seed Book",
+        author="Seed Two Author",
+        page_count=200,
+        submitter_id=test_user.id,
+        season_id=season.id,
+    )
+    db.add_all([book1, book2])
+    await db.flush()
+    db.add(Seed(season_id=season.id, book_id=book1.id, seed=1))
+    db.add(Seed(season_id=season.id, book_id=book2.id, seed=2))
+    matchup = BracketMatchup(
+        season_id=season.id,
+        round=1,
+        position=1,
+        book_a_id=book1.id,
+        book_b_id=book2.id,
+        winner_id=book1.id,
+    )
+    db.add(matchup)
+    await db.commit()
+    await db.refresh(season)
+    await db.refresh(book1)
+    await db.refresh(book2)
+    return season, book1, book2
+
+
+async def test_history_drilldown_shows_seeds_table(engine, test_user, complete_season_with_seeds):
+    """Drill-down page renders the Borda seeds table with seed numbers and titles."""
+    season, book1, book2 = complete_season_with_seeds
+    async with make_client(engine, test_user) as client:
+        resp = await client.get(f"/history/{season.id}")
+    assert resp.status_code == 200
+    assert "Borda Seeds" in resp.text
+    assert "#1" in resp.text
+    assert book1.title in resp.text
+    assert book2.title in resp.text
+
+
+async def test_history_drilldown_shows_bracket_results(
+    engine, test_user, complete_season_with_seeds
+):
+    """Drill-down page renders the bracket results section with round name."""
+    season, book1, book2 = complete_season_with_seeds
+    async with make_client(engine, test_user) as client:
+        resp = await client.get(f"/history/{season.id}")
+    assert resp.status_code == 200
+    assert "Bracket Results" in resp.text
+    # Single round → labelled "Final"
+    assert "Final" in resp.text
+    assert book1.title in resp.text
+    assert book2.title in resp.text
+
+
+async def test_history_drilldown_winner_marked_in_bracket(
+    engine, test_user, complete_season_with_seeds
+):
+    """The winner is marked with 'Winner ✓' and the loser is not."""
+    season, book1, book2 = complete_season_with_seeds
+    async with make_client(engine, test_user) as client:
+        resp = await client.get(f"/history/{season.id}")
+    assert resp.status_code == 200
+    assert "Winner" in resp.text
