@@ -8,11 +8,21 @@
 <section class="mb-8 bg-white border border-forest-100 rounded-xl p-5 shadow-sm">
   <h2 class="font-semibold text-forest-600 mb-3">Active Season</h2>
   {% if active_season %}
-    <p class="text-forest-700">
-      <strong>{{ active_season.name }}</strong>
-      · State: <span class="font-mono text-sound-400">{{ active_season.state.value }}</span>
-      · Page limit: {{ active_season.page_limit }}
-    </p>
+    <div class="flex items-center justify-between flex-wrap gap-3">
+      <p class="text-forest-700">
+        <strong>{{ active_season.name }}</strong>
+        · State: <span class="font-mono text-sound-400">{{ active_season.state.value }}</span>
+        · Page limit: {{ active_season.page_limit }}
+      </p>
+      {% if active_season.state.value != "complete" %}
+      <form method="post" action="/admin/season/{{ active_season.id }}/advance"
+            onsubmit="return confirm('Force-advance the season state? This skips all vote checks.')">
+        <button class="text-xs bg-amber-100 text-amber-700 border border-amber-300 px-3 py-1.5 rounded-lg font-semibold hover:bg-amber-200 transition">
+          Force advance state
+        </button>
+      </form>
+      {% endif %}
+    </div>
   {% else %}
     <p class="text-forest-300 italic">No active season.</p>
   {% endif %}
@@ -85,6 +95,19 @@
 <!-- Members -->
 <section class="mb-8 bg-white border border-forest-100 rounded-xl p-5 shadow-sm">
   <h2 class="font-semibold text-forest-600 mb-3">Members</h2>
+
+  <form method="post" action="/admin/users/add" class="flex flex-wrap gap-2 mb-4">
+    <input name="name" type="text" required placeholder="Name"
+      class="flex-1 min-w-[140px] border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900"
+    />
+    <input name="email" type="email" required placeholder="Email"
+      class="flex-1 min-w-[200px] border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900"
+    />
+    <button class="bg-forest-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-500 transition">
+      Add Member
+    </button>
+  </form>
+
   <ul class="divide-y divide-forest-50">
     {% for u in all_users %}
     <li class="flex items-center justify-between py-2 text-sm">
@@ -95,13 +118,20 @@
         <span class="font-medium text-forest-800">{{ u.name }}</span>
         <span class="text-forest-300 text-xs">{{ u.email }}</span>
         {% if u.is_admin %}<span class="text-xs bg-forest-100 text-forest-600 rounded px-1.5 py-0.5 font-semibold">Admin</span>{% endif %}
+        {% if not u.google_id %}<span class="text-xs bg-amber-100 text-amber-600 rounded px-1.5 py-0.5">Pending login</span>{% endif %}
       </div>
       {% if u.id != user.id %}
-      <form method="post" action="/admin/users/{{ u.id }}/toggle-admin">
-        <button class="text-forest-400 hover:text-forest-600 text-xs font-medium">
-          {% if u.is_admin %}Remove admin{% else %}Make admin{% endif %}
-        </button>
-      </form>
+      <div class="flex items-center gap-3">
+        <form method="post" action="/admin/users/{{ u.id }}/toggle-admin">
+          <button class="text-forest-400 hover:text-forest-600 text-xs font-medium">
+            {% if u.is_admin %}Remove admin{% else %}Make admin{% endif %}
+          </button>
+        </form>
+        <form method="post" action="/admin/users/{{ u.id }}/delete"
+              onsubmit="return confirm('Delete {{ u.name }}? This removes all their votes and submissions.')">
+          <button class="text-red-400 hover:text-red-600 text-xs font-medium">Delete</button>
+        </form>
+      </div>
       {% endif %}
     </li>
     {% endfor %}
@@ -114,9 +144,46 @@
   <h2 class="font-semibold text-forest-600 mb-3">Season History</h2>
   <ul class="divide-y divide-forest-50 text-sm">
     {% for s in all_seasons %}
-    <li class="py-2 flex justify-between">
-      <span class="font-medium text-forest-800">{{ s.name }}</span>
-      <span class="font-mono text-forest-300 text-xs">{{ s.state.value }}</span>
+    <li class="py-3">
+      <div class="flex items-center justify-between mb-2">
+        <div>
+          <span class="font-medium text-forest-800">{{ s.name }}</span>
+          <span class="font-mono text-forest-300 text-xs ml-2">{{ s.state.value }}</span>
+        </div>
+        <form method="post" action="/admin/season/{{ s.id }}/delete"
+              onsubmit="return confirm('Delete season {{ s.name }}? This permanently removes all books, votes, and bracket data.')">
+          <button class="text-red-400 hover:text-red-600 text-xs font-medium">Delete season</button>
+        </form>
+      </div>
+
+      {% if s.books %}
+      <ul class="ml-2 space-y-2">
+        {% for book in s.books %}
+        <li class="text-xs text-forest-600">
+          <div class="flex items-center gap-2">
+            <span class="flex-1">{{ book.title }} <span class="text-forest-400">by {{ book.author }}</span> <span class="text-forest-300">({{ book.page_count }}p)</span></span>
+            <details class="inline">
+              <summary class="cursor-pointer text-forest-400 hover:text-forest-600 font-medium list-none">Edit</summary>
+              <form method="post" action="/admin/books/{{ book.id }}/edit"
+                    class="mt-1 flex flex-wrap gap-1 items-center">
+                <input name="title" type="text" value="{{ book.title }}" required
+                  class="border border-forest-200 rounded px-2 py-1 text-xs w-36"/>
+                <input name="author" type="text" value="{{ book.author }}" required
+                  class="border border-forest-200 rounded px-2 py-1 text-xs w-28"/>
+                <input name="page_count" type="number" value="{{ book.page_count }}" required
+                  class="border border-forest-200 rounded px-2 py-1 text-xs w-16"/>
+                <button class="bg-forest-600 text-white px-2 py-1 rounded text-xs font-semibold hover:bg-forest-500">Save</button>
+              </form>
+            </details>
+            <form method="post" action="/admin/books/{{ book.id }}/delete"
+                  onsubmit="return confirm('Delete {{ book.title }}?')">
+              <button class="text-red-400 hover:text-red-600 font-medium">x</button>
+            </form>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
     </li>
     {% endfor %}
   </ul>

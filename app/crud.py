@@ -55,6 +55,13 @@ async def get_all_seasons(db: AsyncSession) -> list[Season]:
     return list(result.scalars().all())
 
 
+async def get_all_seasons_with_books(db: AsyncSession) -> list[Season]:
+    result = await db.execute(
+        select(Season).options(selectinload(Season.books)).order_by(Season.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
 # ---------------------------------------------------------------------------
 # Users
 # ---------------------------------------------------------------------------
@@ -141,21 +148,23 @@ async def is_book_blocked(
     """
     Returns (is_blocked, reason).
     Blocked if:
-    - it won a past bracket, OR
+    - it appears in the read books list (won or otherwise), OR
     - it's already submitted in the current season by someone else (title+author match)
     """
-    # Check won
+    # Check read books list (any entry, won or not)
     result = await db.execute(
         select(ReadBook).where(
             and_(
                 func.lower(ReadBook.title) == title.lower(),
                 func.lower(ReadBook.author) == author.lower(),
-                ReadBook.won.is_(True),
             )
         )
     )
-    if result.scalar_one_or_none():
-        return True, "This book won a previous season and cannot be re-submitted."
+    read_book = result.scalar_one_or_none()
+    if read_book:
+        if read_book.won:
+            return True, "This book won a previous season and cannot be re-submitted."
+        return True, "This book has already been read by the club and cannot be re-submitted."
 
     # Check already submitted this season
     result = await db.execute(
@@ -390,6 +399,152 @@ async def count_bracket_voters_for_round(db: AsyncSession, season_id: int, round
         .having(func.count(BracketVote.matchup_id) == matchup_count)
     )
     return len(result.all())
+
+
+# ---------------------------------------------------------------------------
+# Veteran tiebreaker
+# ---------------------------------------------------------------------------
+
+
+async def get_prior_nomination_counts(db: AsyncSession, season_id: int) -> dict[int, int]:
+    """
+    For each book in season_id, count how many times a book with the same
+    title+author (case-insensitive) appears in OTHER seasons.
+    Returns {book_id: prior_nomination_count}.
+    """
+    books = await get_books_for_season(db, season_id)
+    result: dict[int, int] = {}
+    for book in books:
+        count_result = await db.execute(
+            select(func.count())
+            .select_from(Book)
+            .where(
+                and_(
+                    func.lower(Book.title) == book.title.lower(),
+                    func.lower(Book.author) == book.author.lower(),
+                    Book.season_id != season_id,
+                )
+            )
+        )
+        result[book.id] = count_result.scalar_one()
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Admin: season / book / user management
+# ---------------------------------------------------------------------------
+
+
+async def delete_season(db: AsyncSession, season_id: int) -> bool:
+    """Delete a season and all associated data (cascade order matters)."""
+    matchup_ids_result = await db.execute(
+        select(BracketMatchup.id).where(BracketMatchup.season_id == season_id)
+    )
+    matchup_ids = [row[0] for row in matchup_ids_result.all()]
+
+    if matchup_ids:
+        votes = await db.execute(select(BracketVote).where(BracketVote.matchup_id.in_(matchup_ids)))
+        for v in votes.scalars().all():
+            await db.delete(v)
+
+    matchups = await db.execute(select(BracketMatchup).where(BracketMatchup.season_id == season_id))
+    for m in matchups.scalars().all():
+        await db.delete(m)
+
+    borda_votes = await db.execute(select(BordaVote).where(BordaVote.season_id == season_id))
+    for v in borda_votes.scalars().all():
+        await db.delete(v)
+
+    seeds = await db.execute(select(Seed).where(Seed.season_id == season_id))
+    for s in seeds.scalars().all():
+        await db.delete(s)
+
+    books = await db.execute(select(Book).where(Book.season_id == season_id))
+    for b in books.scalars().all():
+        await db.delete(b)
+
+    season = await db.execute(select(Season).where(Season.id == season_id))
+    s = season.scalar_one_or_none()
+    if s is None:
+        return False
+    await db.delete(s)
+    await db.commit()
+    return True
+
+
+async def delete_user(db: AsyncSession, user_id: int, reassign_read_books_to: int) -> bool:
+    """Delete a user and cascade their votes/submissions. Reassign their read book entries."""
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user is None:
+        return False
+
+    # Reassign read books added by this user
+    read_books = await db.execute(select(ReadBook).where(ReadBook.added_by == user_id))
+    for rb in read_books.scalars().all():
+        rb.added_by = reassign_read_books_to
+
+    # Delete bracket votes
+    bvotes = await db.execute(select(BracketVote).where(BracketVote.user_id == user_id))
+    for v in bvotes.scalars().all():
+        await db.delete(v)
+
+    # Delete borda votes
+    bovotes = await db.execute(select(BordaVote).where(BordaVote.user_id == user_id))
+    for v in bovotes.scalars().all():
+        await db.delete(v)
+
+    # Delete submitted books (and their associated votes/seeds)
+    user_books = await db.execute(select(Book).where(Book.submitter_id == user_id))
+    for book in user_books.scalars().all():
+        await _delete_book_data(db, book)
+
+    await db.delete(user)
+    await db.commit()
+    return True
+
+
+async def _delete_book_data(db: AsyncSession, book: Book) -> None:
+    """Delete all data associated with a book (votes, seeds), then the book itself."""
+    bv = await db.execute(select(BordaVote).where(BordaVote.book_id == book.id))
+    for v in bv.scalars().all():
+        await db.delete(v)
+
+    seed = await db.execute(select(Seed).where(Seed.book_id == book.id))
+    for s in seed.scalars().all():
+        await db.delete(s)
+
+    await db.delete(book)
+
+
+async def create_user(db: AsyncSession, name: str, email: str) -> User:
+    """Pre-register a user by name+email (no Google login yet)."""
+    user = User(name=name, email=email, google_id=None, is_admin=False)
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def update_book(
+    db: AsyncSession, book_id: int, title: str, author: str, page_count: int
+) -> Book | None:
+    book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+    if book is None:
+        return None
+    book.title = title
+    book.author = author
+    book.page_count = page_count
+    await db.commit()
+    return book
+
+
+async def delete_book(db: AsyncSession, book_id: int) -> bool:
+    book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
+    if book is None:
+        return False
+    await _delete_book_data(db, book)
+    await db.commit()
+    return True
 
 
 # ---------------------------------------------------------------------------

@@ -9,6 +9,7 @@ from app.models import Book, BordaVote, BracketMatchup, BracketVote
 def compute_borda_seeds(
     books: list[Book],
     votes: list[BordaVote],
+    prior_nominations: dict[int, int] | None = None,
 ) -> dict[int, int]:
     """
     Compute seeds (1 = best) from Borda votes.
@@ -16,11 +17,16 @@ def compute_borda_seeds(
     Scoring: if there are N books, a book ranked 1st gets N-1 points,
     ranked 2nd gets N-2, ..., ranked last gets 0.
 
-    Tiebreaker: among books with equal Borda points, the one submitted
-    FIRST (earliest submitted_at) gets the better (lower) seed.
+    Tiebreaker order:
+    1. More Borda points → better seed
+    2. More prior nominations (veteran books) → better seed
+    3. Earlier submitted_at → better seed
 
     Returns {book_id: seed_number}.
     """
+    if prior_nominations is None:
+        prior_nominations = {}
+
     n = len(books)
     scores: dict[int, int] = defaultdict(int)
 
@@ -29,7 +35,7 @@ def compute_borda_seeds(
 
     sorted_books = sorted(
         books,
-        key=lambda b: (-scores[b.id], b.submitted_at),
+        key=lambda b: (-scores[b.id], -prior_nominations.get(b.id, 0), b.submitted_at),
     )
 
     return {book.id: seed for seed, book in enumerate(sorted_books, start=1)}
@@ -127,13 +133,19 @@ def build_next_round_matchups(
 def resolve_matchup_winner(
     matchup: BracketMatchup,
     votes: list[BracketVote],
+    prior_nominations: dict[int, int] | None = None,
 ) -> int:
     """
     Count votes and return the winning book_id.
 
-    Tiebreaker: if vote counts are equal, the book that received its FIRST
-    vote earliest wins.
+    Tiebreaker order:
+    1. More votes → wins
+    2. More prior nominations (veteran books) → wins
+    3. Earliest first vote (voted_at) → wins
     """
+    if prior_nominations is None:
+        prior_nominations = {}
+
     vote_counts: dict[int, int] = defaultdict(int)
     first_vote_time: dict[int, datetime] = {}
 
@@ -153,7 +165,13 @@ def resolve_matchup_winner(
     if b_count > a_count:
         return book_b_id
 
-    # Tie: earliest first vote wins
+    # Tie: more prior nominations wins
+    a_noms = prior_nominations.get(book_a_id, 0)
+    b_noms = prior_nominations.get(book_b_id, 0)
+    if a_noms != b_noms:
+        return book_a_id if a_noms > b_noms else book_b_id
+
+    # Still tied: earliest first vote wins
     a_time = first_vote_time.get(book_a_id, datetime.max)
     b_time = first_vote_time.get(book_b_id, datetime.max)
 

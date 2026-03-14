@@ -90,10 +90,17 @@ async def exchange_code_for_user_info(code: str) -> dict:
 
 
 async def get_or_create_user(db: AsyncSession, user_info: dict) -> User:
-    """Find existing user by google_id or create a new one."""
+    """Find existing user by google_id (or email for pre-registered users), or create a new one."""
     google_id = user_info["sub"]
+    email = user_info.get("email", "")
+
     result = await db.execute(select(User).where(User.google_id == google_id))
     user = result.scalar_one_or_none()
+
+    if user is None and email:
+        # Check for a pre-registered account (admin-added, no google_id yet)
+        result = await db.execute(select(User).where(User.email == email, User.google_id.is_(None)))
+        user = result.scalar_one_or_none()
 
     if user is None:
         # First user to join becomes admin
@@ -102,7 +109,7 @@ async def get_or_create_user(db: AsyncSession, user_info: dict) -> User:
 
         user = User(
             google_id=google_id,
-            email=user_info.get("email", ""),
+            email=email,
             name=user_info.get("name", ""),
             avatar_url=user_info.get("picture"),
             is_admin=is_first,
@@ -111,7 +118,8 @@ async def get_or_create_user(db: AsyncSession, user_info: dict) -> User:
         await db.commit()
         await db.refresh(user)
     else:
-        # Keep name/avatar fresh
+        # Link google_id if this was a pre-registered account, keep name/avatar fresh
+        user.google_id = google_id
         user.name = user_info.get("name", user.name)
         user.avatar_url = user_info.get("picture", user.avatar_url)
         await db.commit()

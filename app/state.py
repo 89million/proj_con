@@ -39,7 +39,8 @@ async def maybe_advance_from_ranking(db: AsyncSession, season: Season) -> bool:
             return False
 
         votes = await crud.get_all_borda_votes_for_season(db, season.id)
-        seed_map = voting.compute_borda_seeds(books, votes)
+        prior_nominations = await crud.get_prior_nomination_counts(db, season.id)
+        seed_map = voting.compute_borda_seeds(books, votes, prior_nominations)
 
         await crud.save_seeds(db, season.id, seed_map)
 
@@ -76,8 +77,9 @@ async def maybe_advance_bracket_round(db: AsyncSession, season: Season) -> bool:
             return False
 
         # Resolve winners for real matchups
+        prior_nominations = await crud.get_prior_nomination_counts(db, season.id)
         for matchup in real_matchups:
-            winner_id = voting.resolve_matchup_winner(matchup, matchup.votes)
+            winner_id = voting.resolve_matchup_winner(matchup, matchup.votes, prior_nominations)
             await crud.set_matchup_winner(db, matchup, winner_id)
 
     # Reload with all winner_ids now set

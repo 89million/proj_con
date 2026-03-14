@@ -6,8 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import crud, state
-from app.config import settings
+from app import crud, state, voting
 from app.auth import (
     build_authorization_url,
     create_session_token,
@@ -15,6 +14,7 @@ from app.auth import (
     get_current_user,
     get_or_create_user,
 )
+from app.config import settings
 from app.database import get_db
 from app.models import SeasonState, User
 
@@ -442,7 +442,7 @@ async def admin_page(
     user: User = Depends(require_admin),
 ):
     read_books = await crud.get_all_read_books(db)
-    all_seasons = await crud.get_all_seasons(db)
+    all_seasons = await crud.get_all_seasons_with_books(db)
     all_users = await crud.get_all_users(db)
     active_season = await crud.get_active_season(db)
 
@@ -502,4 +502,87 @@ async def toggle_admin(
     if target and target.id != current_user.id:
         target.is_admin = not target.is_admin
         await db.commit()
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/users/add", response_class=HTMLResponse)
+async def add_user(
+    name: str = Form(...),
+    email: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    await crud.create_user(db, name, email)
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/users/{user_id}/delete", response_class=HTMLResponse)
+async def delete_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    if user_id != current_user.id:
+        await crud.delete_user(db, user_id, reassign_read_books_to=current_user.id)
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/season/{season_id}/delete", response_class=HTMLResponse)
+async def delete_season(
+    season_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    await crud.delete_season(db, season_id)
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/season/{season_id}/advance", response_class=HTMLResponse)
+async def force_advance_season(
+    season_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    season = await crud.get_season_by_id(db, season_id)
+    if season is None:
+        return RedirectResponse("/admin", status_code=302)
+
+    if season.state == SeasonState.submit:
+        await crud.set_season_state(db, season, SeasonState.ranking)
+    elif season.state == SeasonState.ranking:
+        books = await crud.get_books_for_season(db, season.id)
+        if len(books) >= 2:
+            votes = await crud.get_all_borda_votes_for_season(db, season.id)
+            prior_nominations = await crud.get_prior_nomination_counts(db, season.id)
+            seed_map = voting.compute_borda_seeds(books, votes, prior_nominations)
+            await crud.save_seeds(db, season.id, seed_map)
+            first_round = voting.build_first_round_matchups(season.id, seed_map)
+            await crud.create_matchups(db, first_round)
+        await crud.set_season_state(db, season, SeasonState.bracket)
+    elif season.state == SeasonState.bracket:
+        await crud.set_season_state(db, season, SeasonState.complete)
+
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/books/{book_id}/edit", response_class=HTMLResponse)
+async def edit_book(
+    book_id: int,
+    title: str = Form(...),
+    author: str = Form(...),
+    page_count: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    await crud.update_book(db, book_id, title, author, page_count)
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/books/{book_id}/delete", response_class=HTMLResponse)
+async def delete_book(
+    book_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    await crud.delete_book(db, book_id)
     return RedirectResponse("/admin", status_code=302)
