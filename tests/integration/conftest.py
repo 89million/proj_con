@@ -5,7 +5,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.database import Base, get_db
-from app.main import app, require_admin, require_user
+from app.main import app, get_user_or_none, require_admin, require_user
 from app.models import Season, SeasonParticipant, SeasonState, User
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
@@ -104,6 +104,7 @@ def make_client(engine, current_user):
         return current_user
 
     app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_user_or_none] = override_user
     app.dependency_overrides[require_user] = override_user
     app.dependency_overrides[require_admin] = override_user
 

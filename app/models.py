@@ -129,7 +129,7 @@ class Seed(Base):
 
 
 class BracketMatchup(Base):
-    """A single matchup in the bracket. round: 1=QF, 2=SF, 3=Final."""
+    """A single matchup in the bracket. round 1 = earliest round, highest round = Final."""
 
     __tablename__ = "bracket_matchups"
 

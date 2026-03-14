@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ season.name }} — Book Club{% endblock %}
+{% block content %}
+
+<div class="mb-6 flex items-center justify-between">
+  <h1 class="font-serif text-3xl font-bold text-forest-700">{{ season.name }}</h1>
+  <a href="/history" class="text-forest-400 text-sm hover:underline">← All seasons</a>
+</div>
+
+<!-- Winner callout -->
+{% if winner_book %}
+  <div class="bg-white border-2 border-forest-300 rounded-2xl px-8 py-6 shadow-md text-center mb-8">
+    <div class="text-4xl mb-2">🏆</div>
+    <p class="text-2xl font-bold text-forest-800">{{ winner_book.title }}</p>
+    <p class="text-forest-500 mt-1">by {{ winner_book.author }}</p>
+    {% if winner_book.submitter %}
+      <p class="text-forest-400 text-sm mt-2">Submitted by {{ winner_book.submitter.name }}</p>
+    {% endif %}
+  </div>
+{% endif %}
+
+<!-- Borda seeds -->
+{% if seeds %}
+  <section class="mb-8">
+    <h2 class="text-base font-semibold text-forest-600 mb-3">Borda Seeds</h2>
+    <div class="bg-white border border-forest-100 rounded-xl shadow-sm overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="bg-forest-50 text-forest-500 text-xs uppercase">
+          <tr>
+            <th class="px-4 py-2 text-left w-10">Seed</th>
+            <th class="px-4 py-2 text-left">Book</th>
+            <th class="px-4 py-2 text-left">Author</th>
+            <th class="px-4 py-2 text-left">Submitted by</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-forest-50">
+          {% for seed in seeds %}
+            <tr class="{% if seed.book.id == winner_book.id %}bg-forest-50{% endif %}">
+              <td class="px-4 py-2 font-bold text-forest-600">#{{ seed.seed }}</td>
+              <td class="px-4 py-2 font-medium text-forest-800">
+                {{ seed.book.title }}
+                {% if seed.book.id == winner_book.id %}<span class="ml-1 text-xs">🏆</span>{% endif %}
+              </td>
+              <td class="px-4 py-2 text-forest-400">{{ seed.book.author }}</td>
+              <td class="px-4 py-2 text-forest-400">
+                {% if seed.book.submitter %}{{ seed.book.submitter.name }}{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endif %}
+
+<!-- Bracket results -->
+{% if matchups %}
+  <section>
+    <h2 class="text-base font-semibold text-forest-600 mb-3">Bracket Results</h2>
+    {% for round_num in [1, 2, 3, 4, 5] %}
+      {% set round_matchups = matchups | selectattr('round', 'equalto', round_num) | list %}
+      {% if round_matchups %}
+        <div class="mb-6">
+          <h3 class="text-sm font-semibold text-forest-400 uppercase mb-2">
+            {{ round_names.get(round_num, 'Round ' ~ round_num) }}
+          </h3>
+          <div class="space-y-3">
+            {% for matchup in round_matchups %}
+              {% if matchup.book_a_id != matchup.book_b_id %}
+                <div class="bg-white border border-forest-100 rounded-xl p-4 shadow-sm text-sm">
+                  <div class="flex items-center gap-2 mb-1">
+                    <span class="{% if matchup.winner_id == matchup.book_a_id %}font-bold text-forest-700{% else %}text-forest-300 line-through{% endif %}">
+                      {{ matchup.book_a.title }}
+                    </span>
+                    <span class="text-forest-200 text-xs">— {{ matchup.book_a.author }}</span>
+                    {% if matchup.winner_id == matchup.book_a_id %}
+                      <span class="text-forest-500 text-xs ml-auto font-semibold">Winner ✓</span>
+                    {% endif %}
+                  </div>
+                  <div class="text-center text-forest-200 text-xs my-1">vs</div>
+                  <div class="flex items-center gap-2 mt-1">
+                    <span class="{% if matchup.winner_id == matchup.book_b_id %}font-bold text-forest-700{% else %}text-forest-300 line-through{% endif %}">
+                      {{ matchup.book_b.title }}
+                    </span>
+                    <span class="text-forest-200 text-xs">— {{ matchup.book_b.author }}</span>
+                    {% if matchup.winner_id == matchup.book_b_id %}
+                      <span class="text-forest-500 text-xs ml-auto font-semibold">Winner ✓</span>
+                    {% endif %}
+                  </div>
+                </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+  </section>
+{% endif %}
+
+{% endblock %}

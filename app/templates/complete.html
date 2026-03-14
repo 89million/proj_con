@@ -1,26 +1,37 @@
 {% extends "base.html" %}
-{% block title %}We have a winner! — Book Club{% endblock %}
+{% block title %}Winner{% if season %} — {{ season.name }}{% endif %} — Book Club{% endblock %}
 {% block content %}
 
 <div class="text-center py-12">
-  <h1 class="text-3xl font-bold text-forest-700 mb-2">We have our next book!</h1>
-  {% if winner_book %}
-    <div class="mt-6 inline-block bg-white border-2 border-forest-200 rounded-2xl px-8 py-6 shadow-md">
-      <p class="text-2xl font-bold text-forest-800">{{ winner_book.title }}</p>
-      <p class="text-forest-500 mt-1">by {{ winner_book.author }}</p>
-      <p class="text-forest-300 text-sm mt-1">{{ winner_book.page_count }} pages</p>
-    </div>
-  {% else %}
-    <p class="text-forest-400">Results are being tallied...</p>
+  <div class="text-7xl mb-4">🏆</div>
+  <h1 class="font-serif text-4xl font-bold text-forest-700 mb-1">We have a winner!</h1>
+  {% if season %}
+    <p class="text-forest-400 text-sm mb-6">{{ season.name }}</p>
   {% endif %}
 
-  {% if user and user.is_admin %}
-    <div class="mt-10">
-      <a href="/admin" class="bg-forest-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-forest-500 transition">
+  {% if winner_book %}
+    <div class="mt-4 inline-block bg-white border-2 border-forest-200 rounded-2xl px-10 py-8 shadow-md text-left">
+      <p class="text-3xl font-bold text-forest-800">{{ winner_book.title }}</p>
+      <p class="text-forest-500 mt-2 text-lg">by {{ winner_book.author }}</p>
+      <p class="text-forest-300 text-sm mt-1">{{ winner_book.page_count }} pages</p>
+      {% if winner_book.submitter %}
+        <p class="text-forest-400 text-sm mt-4 border-t border-forest-100 pt-3">
+          Submitted by <span class="font-medium">{{ winner_book.submitter.name }}</span>
+        </p>
+      {% endif %}
+    </div>
+  {% else %}
+    <p class="text-forest-400 mt-6">Results are being tallied...</p>
+  {% endif %}
+
+  <div class="mt-10 flex flex-col items-center gap-3">
+    {% if user and user.is_admin %}
+      <a href="/admin" class="bg-forest-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-forest-500 transition text-lg">
         Start Next Season →
       </a>
-    </div>
-  {% endif %}
+    {% endif %}
+    <a href="/history" class="text-forest-400 text-sm hover:underline">View past seasons</a>
+  </div>
 </div>
 
 {% endblock %}

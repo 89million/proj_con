@@ -52,6 +52,37 @@ async def set_season_state(db: AsyncSession, season: Season, state: SeasonState)
     await db.commit()
 
 
+async def get_most_recent_complete_season(db: AsyncSession) -> Season | None:
+    result = await db.execute(
+        select(Season)
+        .where(Season.state == SeasonState.complete)
+        .order_by(Season.created_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_complete_seasons(db: AsyncSession) -> list[Season]:
+    result = await db.execute(
+        select(Season)
+        .where(Season.state == SeasonState.complete)
+        .order_by(Season.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def get_winner_book_for_season(db: AsyncSession, season_id: int) -> "Book | None":
+    matchups = await get_matchups_for_season(db, season_id)
+    if not matchups:
+        return None
+    max_round = max(m.round for m in matchups)
+    final = next((m for m in matchups if m.round == max_round and m.winner_id), None)
+    if not final:
+        return None
+    books = await get_books_for_season(db, season_id)
+    return next((b for b in books if b.id == final.winner_id), None)
+
+
 async def get_all_seasons(db: AsyncSession) -> list[Season]:
     result = await db.execute(select(Season).order_by(Season.created_at.desc()))
     return list(result.scalars().all())

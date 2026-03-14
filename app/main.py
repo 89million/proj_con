@@ -25,8 +25,24 @@ templates = Jinja2Templates(directory="app/templates")
 
 
 # ---------------------------------------------------------------------------
+# Pure helpers
+# ---------------------------------------------------------------------------
+
+_ROUND_LABELS = ["Final", "Semifinals", "Quarterfinals", "Round of 16", "Round of 32"]
+
+
+def build_round_names(max_round: int) -> dict[int, str]:
+    """Map round numbers to display names based on total rounds in the bracket."""
+    return {max_round - i: label for i, label in enumerate(_ROUND_LABELS) if max_round - i >= 1}
+
+
+# ---------------------------------------------------------------------------
 # Dependency helpers
 # ---------------------------------------------------------------------------
+
+
+async def get_user_or_none(request: Request, db: AsyncSession = Depends(get_db)) -> User | None:
+    return await get_current_user(request, db)
 
 
 async def require_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
@@ -51,24 +67,30 @@ async def require_admin(request: Request, db: AsyncSession = Depends(get_db)) ->
 
 
 @app.get("/", response_class=HTMLResponse)
-async def root(request: Request, db: AsyncSession = Depends(get_db)):
-    user = await get_current_user(request, db)
+async def root(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User | None = Depends(get_user_or_none),
+):
     if user is None:
         return templates.TemplateResponse("landing.html", {"request": request})
 
     season = await crud.get_active_season(db)
-    if season is None:
-        # No active season — check if admin, show admin page hint
-        return templates.TemplateResponse("no_season.html", {"request": request, "user": user})
+    if season is not None:
+        if season.state == SeasonState.submit:
+            return RedirectResponse("/submit", status_code=302)
+        elif season.state == SeasonState.ranking:
+            return RedirectResponse("/ranking", status_code=302)
+        elif season.state == SeasonState.bracket:
+            return RedirectResponse("/bracket", status_code=302)
 
-    if season.state == SeasonState.submit:
-        return RedirectResponse("/submit", status_code=302)
-    elif season.state == SeasonState.ranking:
-        return RedirectResponse("/ranking", status_code=302)
-    elif season.state == SeasonState.bracket:
-        return RedirectResponse("/bracket", status_code=302)
-    else:
+    # No active season — redirect to winner page if any season has completed
+    complete = await crud.get_most_recent_complete_season(db)
+    if complete is not None:
         return RedirectResponse("/complete", status_code=302)
+
+    # Truly no history — show the "no season" page (admin sees start button)
+    return templates.TemplateResponse("no_season.html", {"request": request, "user": user})
 
 
 # ---------------------------------------------------------------------------
@@ -330,6 +352,9 @@ async def bracket_page(
         if vote:
             user_votes[matchup.id] = vote.book_id
 
+    max_round = max((m.round for m in all_matchups), default=1)
+    round_names = build_round_names(max_round)
+
     return templates.TemplateResponse(
         "bracket.html",
         {
@@ -341,7 +366,7 @@ async def bracket_page(
             "seeds": seeds,
             "user_votes": user_votes,
             "waiting_on": waiting_on,
-            "round_names": {1: "Quarterfinals", 2: "Semifinals", 3: "Final"},
+            "round_names": round_names,
         },
     )
 
@@ -392,20 +417,10 @@ async def complete_page(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_user),
 ):
-    # Find the most recent complete season
-    all_seasons = await crud.get_all_seasons(db)
-    complete_seasons = [s for s in all_seasons if s.state == SeasonState.complete]
-
+    season = await crud.get_most_recent_complete_season(db)
     winner_book = None
-    season = None
-    if complete_seasons:
-        season = complete_seasons[0]
-        books = await crud.get_books_for_season(db, season.id)
-        # Find the final matchup winner
-        matchups = await crud.get_matchups_for_season(db, season.id)
-        final = next((m for m in matchups if m.round == 3 and m.winner_id), None)
-        if final:
-            winner_book = next((b for b in books if b.id == final.winner_id), None)
+    if season:
+        winner_book = await crud.get_winner_book_for_season(db, season.id)
 
     return templates.TemplateResponse(
         "complete.html",
@@ -414,6 +429,61 @@ async def complete_page(
             "user": user,
             "season": season,
             "winner_book": winner_book,
+        },
+    )
+
+
+@app.get("/history", response_class=HTMLResponse)
+async def history_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    complete_seasons = await crud.get_complete_seasons(db)
+    seasons_with_winners = []
+    for s in complete_seasons:
+        winner = await crud.get_winner_book_for_season(db, s.id)
+        seasons_with_winners.append((s, winner))
+
+    return templates.TemplateResponse(
+        "history.html",
+        {
+            "request": request,
+            "user": user,
+            "seasons_with_winners": seasons_with_winners,
+        },
+    )
+
+
+@app.get("/history/{season_id}", response_class=HTMLResponse)
+async def history_season_page(
+    season_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    season = await crud.get_season_by_id(db, season_id)
+    if season is None or season.state != SeasonState.complete:
+        raise HTTPException(status_code=404, detail="Season not found.")
+
+    books = await crud.get_books_for_season(db, season_id)
+    seeds = await crud.get_seeds_for_season(db, season_id)
+    matchups = await crud.get_matchups_for_season(db, season_id)
+    winner_book = await crud.get_winner_book_for_season(db, season_id)
+    max_round = max((m.round for m in matchups), default=1)
+    round_names = build_round_names(max_round)
+
+    return templates.TemplateResponse(
+        "history_season.html",
+        {
+            "request": request,
+            "user": user,
+            "season": season,
+            "books": books,
+            "seeds": seeds,
+            "matchups": matchups,
+            "winner_book": winner_book,
+            "round_names": round_names,
         },
     )
 

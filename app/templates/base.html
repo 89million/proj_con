@@ -64,6 +64,7 @@
           <img src="{{ user.avatar_url }}" class="w-8 h-8 rounded-full border-2 border-forest-400" alt="{{ user.name }}" />
         {% endif %}
         <span class="font-medium opacity-90">{{ user.name }}</span>
+        <a href="/history" class="hover:underline opacity-60 text-xs">History</a>
         {% if user.is_admin %}
           <a href="/admin" class="bg-forest-500 hover:bg-forest-400 px-3 py-1 rounded text-xs font-semibold transition">Admin</a>
         {% endif %}
