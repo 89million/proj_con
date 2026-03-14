@@ -22,6 +22,16 @@ jobs:
 
       - name: Lint
         run: make lint
+        env:
+          GOOGLE_CLIENT_ID: ci-dummy
+          GOOGLE_CLIENT_SECRET: ci-dummy
+          SECRET_KEY: ci-dummy-secret-key-for-testing-only
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
 
       - name: Test
         run: make test
+        env:
+          GOOGLE_CLIENT_ID: ci-dummy
+          GOOGLE_CLIENT_SECRET: ci-dummy
+          SECRET_KEY: ci-dummy-secret-key-for-testing-only
+          DATABASE_URL: "sqlite+aiosqlite:///:memory:"
