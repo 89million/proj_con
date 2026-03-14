@@ -1,5 +1,6 @@
 """All database read/write operations."""
 
+from rapidfuzz.distance import Levenshtein
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -207,42 +208,41 @@ async def get_all_read_books(db: AsyncSession) -> list[ReadBook]:
     return list(result.scalars().all())
 
 
+# Maximum edit distances for fuzzy duplicate detection.
+# Both title AND author must be within their thresholds to trigger a block,
+# so a different author still protects a book with a similar title.
+_TITLE_FUZZ_MAX = 2  # e.g. "Bloodchild" vs "Bloodchils" (1 edit) → blocked
+_AUTHOR_FUZZ_MAX = 3  # e.g. "Octavia Butler" vs "Octavia E. Butler" (3 edits) → blocked
+
+
+def _title_matches(a: str, b: str) -> bool:
+    return Levenshtein.distance(a.lower(), b.lower()) <= _TITLE_FUZZ_MAX
+
+
+def _author_matches(a: str, b: str) -> bool:
+    return Levenshtein.distance(a.lower(), b.lower()) <= _AUTHOR_FUZZ_MAX
+
+
 async def is_book_blocked(
     db: AsyncSession, title: str, author: str, season_id: int
 ) -> tuple[bool, str]:
     """
     Returns (is_blocked, reason).
-    Blocked if:
-    - it appears in the read books list (won or otherwise), OR
-    - it's already submitted in the current season by someone else (title+author match)
+    Blocked if title+author fuzzy-match (within edit-distance thresholds):
+    - any entry in the read books list (won or otherwise), OR
+    - any book already submitted this season
     """
-    # Check read books list (any entry, won or not)
-    result = await db.execute(
-        select(ReadBook).where(
-            and_(
-                func.lower(ReadBook.title) == title.lower(),
-                func.lower(ReadBook.author) == author.lower(),
-            )
-        )
-    )
-    read_book = result.scalar_one_or_none()
-    if read_book:
-        if read_book.won:
-            return True, "This book won a previous season and cannot be re-submitted."
-        return True, "This book has already been read by the club and cannot be re-submitted."
+    read_books = await get_all_read_books(db)
+    for rb in read_books:
+        if _title_matches(title, rb.title) and _author_matches(author, rb.author):
+            if rb.won:
+                return True, "This book won a previous season and cannot be re-submitted."
+            return True, "This book has already been read by the club and cannot be re-submitted."
 
-    # Check already submitted this season
-    result = await db.execute(
-        select(Book).where(
-            and_(
-                func.lower(Book.title) == title.lower(),
-                func.lower(Book.author) == author.lower(),
-                Book.season_id == season_id,
-            )
-        )
-    )
-    if result.scalar_one_or_none():
-        return True, "This book has already been submitted this season."
+    season_books = await get_books_for_season(db, season_id)
+    for book in season_books:
+        if _title_matches(title, book.title) and _author_matches(author, book.author):
+            return True, "This book has already been submitted this season."
 
     return False, ""
 
