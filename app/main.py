@@ -4,6 +4,7 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud, state, voting
@@ -29,6 +30,31 @@ templates = Jinja2Templates(directory="app/templates")
 # ---------------------------------------------------------------------------
 
 _ROUND_LABELS = ["Final", "Semifinals", "Quarterfinals", "Round of 16", "Round of 32"]
+
+
+async def is_login_allowed(db: AsyncSession, email: str) -> bool:
+    """Return True if this email is permitted to log in.
+
+    Priority order:
+    1. ALLOWED_EMAILS env var includes this email → always allow (env var override / bootstrap).
+    2. Email exists in the users table (admin pre-registered them) → allow.
+    3. The users table is completely empty → allow (first-admin bootstrap).
+    4. Otherwise → deny.
+
+    This means the DB is the day-to-day source of truth: an admin adding a
+    member via the admin panel is sufficient to grant them login access.
+    ALLOWED_EMAILS only needs to contain the first admin's email for the
+    initial bootstrap.
+    """
+    if settings.is_email_allowed(email):
+        return True
+    user_count = (await db.execute(select(func.count()).select_from(User))).scalar_one()
+    if user_count == 0:
+        return True  # empty DB — let first admin in to bootstrap
+    email_in_db = (
+        await db.execute(select(User.id).where(func.lower(User.email) == email.strip().lower()))
+    ).scalar_one_or_none()
+    return email_in_db is not None
 
 
 def build_round_names(max_round: int) -> dict[int, str]:
@@ -170,7 +196,7 @@ async def auth_callback(
         raise HTTPException(status_code=400, detail="OAuth failed. Please try again.")
 
     email = user_info.get("email", "")
-    if not settings.is_email_allowed(email):
+    if not await is_login_allowed(db, email):
         return RedirectResponse("/?error=not_invited", status_code=302)
 
     user = await get_or_create_user(db, user_info)
@@ -616,6 +642,16 @@ async def admin_page(
         participant_ids = {u.id for u in season_participants}
         season_non_participants = [u for u in all_users if u.id not in participant_ids]
 
+    # Users whose emails aren't covered by the ALLOWED_EMAILS env var.
+    # These users can still log in (DB membership grants access), but if
+    # the admin thinks ALLOWED_EMAILS is the gatekeeper they should know.
+    # Only computed when ALLOWED_EMAILS is actually set (empty = allow all).
+    allowlist_gaps = (
+        [u for u in all_users if not settings.is_email_allowed(u.email)]
+        if settings.allowed_emails.strip()
+        else []
+    )
+
     return templates.TemplateResponse(
         "admin.html",
         {
@@ -627,6 +663,7 @@ async def admin_page(
             "active_season": active_season,
             "season_participants": season_participants,
             "season_non_participants": season_non_participants,
+            "allowlist_gaps": allowlist_gaps,
         },
     )
 
