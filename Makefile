@@ -1,12 +1,13 @@
 CONDA_ENV_NAME = proj_con_3.12
 PYTHON = python
 
-.PHONY: build-env install fmt lint unit integration test cov
+.PHONY: build-env install format fmt lint unit integration test cov ci
 
 build-env:
 	conda create -n $(CONDA_ENV_NAME) python=3.12 -y
 
 install:
+	pip install uv
 	uv pip install -r requirements.txt -r requirements-dev.txt
 
 format:
@@ -28,3 +29,5 @@ test: unit integration
 
 cov:
 	pytest tests/ --cov=app --cov-report=term-missing
+
+ci: build-env install lint test

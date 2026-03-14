@@ -277,3 +277,74 @@ def test_build_next_round_from_2():
     real = [m for m in matchups if m["book_a_id"] != m["book_b_id"]]
     assert len(real) == 1
     assert {real[0]["book_a_id"], real[0]["book_b_id"]} == {1, 2}
+
+
+# ---------------------------------------------------------------------------
+# Veteran tiebreaker — prior_nominations
+# ---------------------------------------------------------------------------
+
+
+def test_borda_seeds_tiebreak_by_prior_nominations():
+    """When Borda points tie, the book with more prior nominations gets the better seed."""
+    book_veteran = make_book(1)
+    book_newcomer = make_book(2)
+
+    # Equal Borda points: each user ranks them in opposite order
+    votes = [
+        make_vote(book_id=1, rank=1, user_id=1),
+        make_vote(book_id=2, rank=2, user_id=1),
+        make_vote(book_id=2, rank=1, user_id=2),
+        make_vote(book_id=1, rank=2, user_id=2),
+    ]
+    prior = {1: 2, 2: 0}  # book 1 has been nominated twice before
+    seeds = compute_borda_seeds([book_veteran, book_newcomer], votes, prior_nominations=prior)
+    assert seeds[1] == 1  # veteran gets seed 1
+    assert seeds[2] == 2
+
+
+def test_borda_seeds_prior_nominations_only_breaks_borda_tie():
+    """Prior nominations do NOT override a clear Borda points lead."""
+    book_a = make_book(1)  # worse Borda score but veteran
+    book_b = make_book(2)  # better Borda score but newcomer
+
+    # Both users prefer book_b → book_b wins on Borda points regardless of vet status
+    votes = [
+        make_vote(book_id=2, rank=1, user_id=1),
+        make_vote(book_id=1, rank=2, user_id=1),
+        make_vote(book_id=2, rank=1, user_id=2),
+        make_vote(book_id=1, rank=2, user_id=2),
+    ]
+    prior = {1: 5, 2: 0}  # book_a is a heavy veteran, but Borda still decides
+    seeds = compute_borda_seeds([book_a, book_b], votes, prior_nominations=prior)
+    assert seeds[2] == 1  # higher Borda points wins, vet status doesn't override
+    assert seeds[1] == 2
+
+
+def test_resolve_matchup_winner_tiebreak_by_prior_nominations():
+    """Equal votes: book with more prior nominations wins before checking timestamps."""
+    matchup = make_matchup(id=1, book_a_id=10, book_b_id=20)
+    t0 = BASE_TIME
+
+    # 1 vote each — a tie on vote count
+    votes = [
+        make_bracket_vote(book_id=10, voted_at=t0),
+        make_bracket_vote(book_id=20, voted_at=t0),
+    ]
+    # book_a (10) is a veteran; book_b (20) has no prior nominations
+    prior = {10: 3, 20: 0}
+    assert resolve_matchup_winner(matchup, votes, prior_nominations=prior) == 10
+
+
+def test_resolve_matchup_winner_prior_nominations_dont_override_vote_lead():
+    """More votes beats prior nominations."""
+    matchup = make_matchup(id=1, book_a_id=10, book_b_id=20)
+
+    # book_b has 3 votes; book_a has only 1 — book_b wins despite book_a being a veteran
+    votes = [
+        make_bracket_vote(book_id=10),
+        make_bracket_vote(book_id=20),
+        make_bracket_vote(book_id=20),
+        make_bracket_vote(book_id=20),
+    ]
+    prior = {10: 99, 20: 0}
+    assert resolve_matchup_winner(matchup, votes, prior_nominations=prior) == 20

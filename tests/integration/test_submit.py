@@ -53,6 +53,22 @@ async def test_submit_won_book_blocked(client_as_user, active_season, test_admin
     assert "won" in resp.text.lower()
 
 
+async def test_submit_previously_read_non_winner_blocked(
+    client_as_user, active_season, test_admin, db
+):
+    """A book that was read (but didn't win) is also blocked from re-submission."""
+    read = ReadBook(title="Been There", author="Done That", won=False, added_by=test_admin.id)
+    db.add(read)
+    await db.commit()
+
+    resp = await client_as_user.post(
+        "/submit",
+        data={"title": "Been There", "author": "Done That", "page_count": 250},
+    )
+    assert resp.status_code == 200
+    assert "read" in resp.text.lower()
+
+
 async def test_submit_season_advances_to_ranking(client_as_admin, active_season):
     """When the only user submits, the season auto-advances to ranking."""
     # Only test_admin is in the DB (active_season + client_as_admin share the same fixture).
