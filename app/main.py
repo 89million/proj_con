@@ -21,7 +21,7 @@ from app.config import settings
 from app.database import get_db
 from app.models import IdeaStatus, SeasonState, User
 
-app = FastAPI(title="Book Club")
+app = FastAPI(title="Stumbling Book Club")
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
