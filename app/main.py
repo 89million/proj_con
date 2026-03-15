@@ -111,8 +111,10 @@ def seed_tiebreakers(
             continue
         noms = {s.book_id: prior_nominations.get(s.book_id, 0) for s in group}
         reason = "veteran" if len(set(noms.values())) > 1 else "submission_order"
+        # Only the book that WON the tiebreak (lowest seed number) gets the badge.
+        winner_seed = min(group, key=lambda s: s.seed)
         for s in group:
-            result[s.book_id] = reason
+            result[s.book_id] = reason if s.book_id == winner_seed.book_id else None
     return result
 
 
