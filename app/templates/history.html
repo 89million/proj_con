@@ -51,6 +51,11 @@
         Thanks! Your suggestion has been submitted for admin approval.
       </div>
     {% endif %}
+    {% if duplicate %}
+      <div class="bg-sound-50 border border-sound-200 rounded-lg px-4 py-2 text-sm text-sound-600 mb-3">
+        This book has already been submitted or is already on the list.
+      </div>
+    {% endif %}
     <form method="post" action="/history/suggest-book" class="flex flex-col sm:flex-row gap-2">
       <input type="text" name="title" placeholder="Title" required
              class="flex-1 border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />

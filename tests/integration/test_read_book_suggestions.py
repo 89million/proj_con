@@ -108,6 +108,65 @@ async def test_books_tab_lists_approved_books(engine, db, test_admin, test_user)
     assert resp.text.index("Animal Farm") < resp.text.index("Zen and the Art")
 
 
+async def test_duplicate_suggestion_blocked(engine, db, test_user, test_admin):
+    """Submitting a book that already exists (pending or approved) is blocked."""
+    from app import crud
+
+    # Add an approved book
+    await crud.add_read_book(db, "Dune", "Frank Herbert", won=False, added_by=test_admin.id)
+
+    # Try to submit the same book
+    async with make_client(engine, test_user) as client:
+        resp = await client.post(
+            "/history/suggest-book",
+            data={"title": "Dune", "author": "Frank Herbert"},
+        )
+
+    assert resp.status_code == 302
+    assert "duplicate=1" in resp.headers["location"]
+
+    # Should not have created a new entry
+    result = await db.execute(select(ReadBook).where(ReadBook.title == "Dune"))
+    assert len(result.scalars().all()) == 1
+
+
+async def test_duplicate_suggestion_blocked_fuzzy(engine, db, test_user, test_admin):
+    """Fuzzy matching catches near-duplicates (e.g. typos)."""
+    from app import crud
+
+    await crud.add_read_book(db, "Dune", "Frank Herbert", won=False, added_by=test_admin.id)
+
+    # Submit with a slight typo — should still be blocked
+    async with make_client(engine, test_user) as client:
+        resp = await client.post(
+            "/history/suggest-book",
+            data={"title": "Dune", "author": "Frank Herbet"},
+        )
+
+    assert resp.status_code == 302
+    assert "duplicate=1" in resp.headers["location"]
+
+
+async def test_duplicate_suggestion_blocked_against_pending(engine, db, test_user):
+    """A second submission is blocked if the first is still pending."""
+    async with make_client(engine, test_user) as client:
+        await client.post(
+            "/history/suggest-book",
+            data={"title": "Ender's Game", "author": "Orson Scott Card"},
+        )
+        # Submit the same book again
+        resp = await client.post(
+            "/history/suggest-book",
+            data={"title": "Ender's Game", "author": "Orson Scott Card"},
+        )
+
+    assert resp.status_code == 302
+    assert "duplicate=1" in resp.headers["location"]
+
+    result = await db.execute(select(ReadBook).where(ReadBook.title == "Ender's Game"))
+    assert len(result.scalars().all()) == 1
+
+
 async def test_history_default_tab_is_seasons(engine, db, test_user):
     """GET /history without tab param defaults to showing the seasons tab."""
     async with make_client(engine, test_user) as client:

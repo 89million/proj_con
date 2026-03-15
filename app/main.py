@@ -537,6 +537,7 @@ async def history_page(
     request: Request,
     tab: str = "seasons",
     submitted: int = 0,
+    duplicate: int = 0,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_user),
 ):
@@ -559,6 +560,7 @@ async def history_page(
             "read_books": read_books,
             "tab": tab,
             "submitted": submitted,
+            "duplicate": duplicate,
         },
     )
 
@@ -573,6 +575,8 @@ async def suggest_read_book(
     title = title.strip()
     author = author.strip()
     if title and author:
+        if await crud.is_read_book_duplicate(db, title, author):
+            return RedirectResponse("/history?tab=books&duplicate=1", status_code=302)
         await crud.submit_read_book(db, title, author, user.id)
     return RedirectResponse("/history?tab=books&submitted=1", status_code=302)
 

@@ -280,6 +280,15 @@ async def is_book_blocked(
     return False, ""
 
 
+async def is_read_book_duplicate(db: AsyncSession, title: str, author: str) -> bool:
+    """Check if title+author fuzzy-matches any existing read book (pending or approved)."""
+    read_books = await get_all_read_books(db)
+    for rb in read_books:
+        if _title_matches(title, rb.title) and _author_matches(author, rb.author):
+            return True
+    return False
+
+
 async def add_read_book(
     db: AsyncSession, title: str, author: str, won: bool, added_by: int
 ) -> ReadBook:
