@@ -223,7 +223,7 @@
                   class="border border-forest-200 rounded px-2 py-1 text-xs w-28"/>
                 <input name="page_count" type="number" value="{{ book.page_count }}" required
                   class="border border-forest-200 rounded px-2 py-1 text-xs w-16"/>
-                <textarea name="description" rows="2" placeholder="Description (optional)"
+                <textarea name="description" rows="2" maxlength="700" placeholder="Description (optional)"
                   class="border border-forest-200 rounded px-2 py-1 text-xs w-64">{{ book.description or '' }}</textarea>
                 <button class="bg-forest-600 text-white px-2 py-1 rounded text-xs font-semibold hover:bg-forest-500">Save</button>
               </form>

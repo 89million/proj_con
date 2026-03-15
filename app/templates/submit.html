@@ -66,9 +66,9 @@
         Description <span class="text-forest-300 font-normal">(optional)</span>
       </label>
       <div id="description-wrapper">
-        <textarea id="description" name="description" rows="3"
+        <textarea id="description" name="description" rows="3" maxlength="700"
           class="w-full border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900"
-          placeholder="A sentence or two to help the group decide…"
+          placeholder="A sentence or two to help the group decide… (120 words max)"
         >{{ form.description if form is defined and form.description else '' }}</textarea>
       </div>
       <button type="button"

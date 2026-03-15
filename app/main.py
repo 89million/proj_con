@@ -277,6 +277,10 @@ async def submit_book(
     if page_count > season.page_limit:
         errors.append(f"Book exceeds the {season.page_limit}-page limit ({page_count} pages).")
 
+    # Description word limit
+    if description and len(description.split()) > 120:
+        errors.append("Description must be 120 words or fewer.")
+
     # Blocked?
     if not errors:
         blocked, reason = await crud.is_book_blocked(db, title, author, season.id)
@@ -627,9 +631,8 @@ async def suggest_description(
         text = result.text.strip()
     except Exception:
         text = ""
-    return HTMLResponse(
-        f'<textarea id="description" name="description" rows="3" class="{css}">{text}</textarea>'
-    )
+    attrs = 'id="description" name="description" rows="3" maxlength="700"'
+    return HTMLResponse(f'<textarea {attrs} class="{css}">{text}</textarea>')
 
 
 @app.get("/partials/waiting-on", response_class=HTMLResponse)
