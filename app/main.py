@@ -620,7 +620,8 @@ async def suggest_description(
             model="gemini-2.5-flash",
             contents=(
                 f"Write exactly 2 sentences describing the book '{title}' by {author}. "
-                "Be concise and informative. No preamble, no quotes around your answer."
+                "Be concise and informative. Do NOT reveal plot twists, endings, or spoilers. "
+                "Focus on premise and themes only. No preamble, no quotes around your answer."
             ),
         )
         text = result.text.strip()
