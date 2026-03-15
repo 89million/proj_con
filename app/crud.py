@@ -615,7 +615,7 @@ async def delete_user(db: AsyncSession, user_id: int, reassign_read_books_to: in
 
 
 async def _delete_book_data(db: AsyncSession, book: Book) -> None:
-    """Delete all data associated with a book (votes, seeds), then the book itself."""
+    """Delete all data associated with a book (matchups, votes, seeds), then the book itself."""
     bv = await db.execute(select(BordaVote).where(BordaVote.book_id == book.id))
     for v in bv.scalars().all():
         await db.delete(v)
@@ -623,6 +623,24 @@ async def _delete_book_data(db: AsyncSession, book: Book) -> None:
     seed = await db.execute(select(Seed).where(Seed.book_id == book.id))
     for s in seed.scalars().all():
         await db.delete(s)
+
+    # Delete bracket votes and matchups that reference this book
+    from sqlalchemy import or_
+
+    matchup_result = await db.execute(
+        select(BracketMatchup).where(
+            or_(
+                BracketMatchup.book_a_id == book.id,
+                BracketMatchup.book_b_id == book.id,
+                BracketMatchup.winner_id == book.id,
+            )
+        )
+    )
+    for m in matchup_result.scalars().all():
+        votes = await db.execute(select(BracketVote).where(BracketVote.matchup_id == m.id))
+        for v in votes.scalars().all():
+            await db.delete(v)
+        await db.delete(m)
 
     await db.delete(book)
 
@@ -647,10 +665,35 @@ async def update_book(
     book = (await db.execute(select(Book).where(Book.id == book_id))).scalar_one_or_none()
     if book is None:
         return None
+    old_title, old_author = book.title, book.author
     book.title = title
     book.author = author
     book.page_count = page_count
     book.description = description
+
+    # If this book is a season winner, keep the read_books snapshot in sync.
+    if old_title != title or old_author != author:
+        winner_matchup = (
+            (await db.execute(select(BracketMatchup).where(BracketMatchup.winner_id == book_id)))
+            .scalars()
+            .first()
+        )
+        if winner_matchup is not None:
+            rb = (
+                await db.execute(
+                    select(ReadBook).where(
+                        and_(
+                            func.lower(ReadBook.title) == old_title.lower(),
+                            func.lower(ReadBook.author) == old_author.lower(),
+                            ReadBook.won.is_(True),
+                        )
+                    )
+                )
+            ).scalar_one_or_none()
+            if rb is not None:
+                rb.title = title
+                rb.author = author
+
     await db.commit()
     return book
 

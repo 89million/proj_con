@@ -633,6 +633,9 @@ async def suggest_description(
         text = result.text.strip()
     except Exception:
         text = ""
+    import html
+
+    text = html.escape(text)
     attrs = 'id="description" name="description" rows="3" maxlength="700"'
     return HTMLResponse(f'<textarea {attrs} class="{css}">{text}</textarea>')
 
@@ -814,7 +817,7 @@ async def force_advance_season(
             await crud.save_seeds(db, season.id, seed_map)
             first_round = voting.build_first_round_matchups(season.id, seed_map)
             await crud.create_matchups(db, first_round)
-        await crud.set_season_state(db, season, SeasonState.bracket)
+            await crud.set_season_state(db, season, SeasonState.bracket)
     elif season.state == SeasonState.bracket:
         await crud.set_season_state(db, season, SeasonState.complete)
 

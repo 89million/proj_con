@@ -14,6 +14,7 @@ TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 @pytest_asyncio.fixture(scope="function")
 async def engine():
     """Fresh in-memory SQLite engine per test — creates and drops all tables."""
+    from sqlalchemy import event
     from sqlalchemy.pool import StaticPool
 
     _engine = create_async_engine(
@@ -21,6 +22,13 @@ async def engine():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+
+    # Enable foreign key enforcement (SQLite has it off by default,
+    # but PostgreSQL always enforces FKs — match prod behavior).
+    @event.listens_for(_engine.sync_engine, "connect")
+    def _enable_fks(dbapi_conn, connection_record):
+        dbapi_conn.execute("PRAGMA foreign_keys=ON")
+
     async with _engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield _engine

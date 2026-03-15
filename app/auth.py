@@ -5,7 +5,7 @@ import urllib.parse
 import httpx
 from fastapi import Request
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -99,7 +99,9 @@ async def get_or_create_user(db: AsyncSession, user_info: dict) -> User:
 
     if user is None and email:
         # Check for a pre-registered account (admin-added, no google_id yet)
-        result = await db.execute(select(User).where(User.email == email, User.google_id.is_(None)))
+        result = await db.execute(
+            select(User).where(func.lower(User.email) == email.lower(), User.google_id.is_(None))
+        )
         user = result.scalar_one_or_none()
 
     if user is None:
