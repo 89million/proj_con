@@ -12,11 +12,14 @@ down_revision = "0006"
 
 
 def upgrade():
+    ideastatus = sa.Enum("proposed", "in_progress", "done", "wont_do", name="ideastatus")
+    ideastatus.create(op.get_bind(), checkfirst=True)
+
     op.add_column(
         "feature_ideas",
         sa.Column(
             "status",
-            sa.Enum("proposed", "in_progress", "done", "wont_do", name="ideastatus"),
+            ideastatus,
             server_default="proposed",
             nullable=False,
         ),
