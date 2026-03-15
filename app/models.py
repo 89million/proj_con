@@ -96,6 +96,7 @@ class ReadBook(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     author: Mapped[str] = mapped_column(String, nullable=False)
     won: Mapped[bool] = mapped_column(Boolean, default=False)
+    pending: Mapped[bool] = mapped_column(Boolean, default=False)
     added_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     added_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 

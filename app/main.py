@@ -535,6 +535,8 @@ async def complete_page(
 @app.get("/history", response_class=HTMLResponse)
 async def history_page(
     request: Request,
+    tab: str = "seasons",
+    submitted: int = 0,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_user),
 ):
@@ -544,14 +546,35 @@ async def history_page(
         winner = await crud.get_winner_book_for_season(db, s.id)
         seasons_with_winners.append((s, winner))
 
+    read_books = []
+    if tab == "books":
+        read_books = await crud.get_approved_read_books(db)
+
     return templates.TemplateResponse(
         "history.html",
         {
             "request": request,
             "user": user,
             "seasons_with_winners": seasons_with_winners,
+            "read_books": read_books,
+            "tab": tab,
+            "submitted": submitted,
         },
     )
+
+
+@app.post("/history/suggest-book", response_class=HTMLResponse)
+async def suggest_read_book(
+    title: str = Form(...),
+    author: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    title = title.strip()
+    author = author.strip()
+    if title and author:
+        await crud.submit_read_book(db, title, author, user.id)
+    return RedirectResponse("/history?tab=books&submitted=1", status_code=302)
 
 
 @app.get("/history/{season_id}", response_class=HTMLResponse)
@@ -678,6 +701,7 @@ async def admin_page(
     user: User = Depends(require_admin),
 ):
     read_books = await crud.get_all_read_books(db)
+    pending_read_books = await crud.get_pending_read_books(db)
     all_seasons = await crud.get_all_seasons_with_books(db)
     all_users = await crud.get_all_users(db)
     active_season = await crud.get_active_season(db)
@@ -705,6 +729,7 @@ async def admin_page(
             "request": request,
             "user": user,
             "read_books": read_books,
+            "pending_read_books": pending_read_books,
             "all_seasons": all_seasons,
             "all_users": all_users,
             "active_season": active_season,
@@ -743,6 +768,26 @@ async def add_read_book(
 
 @app.post("/admin/read-books/{read_book_id}/delete", response_class=HTMLResponse)
 async def delete_read_book(
+    read_book_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    await crud.delete_read_book(db, read_book_id)
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/read-books/{read_book_id}/approve", response_class=HTMLResponse)
+async def approve_read_book(
+    read_book_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    await crud.approve_read_book(db, read_book_id)
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/read-books/{read_book_id}/reject", response_class=HTMLResponse)
+async def reject_read_book(
     read_book_id: int,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_admin),

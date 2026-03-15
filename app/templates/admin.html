@@ -101,6 +101,32 @@
   </form>
 </section>
 
+<!-- Pending book suggestions -->
+{% if pending_read_books %}
+<section class="mb-8 bg-white border border-sound-200 rounded-xl p-5 shadow-sm">
+  <h2 class="font-semibold text-sound-600 mb-3">Pending Book Suggestions</h2>
+  <ul class="divide-y divide-forest-50">
+    {% for rb in pending_read_books %}
+    <li class="flex items-center justify-between py-2 text-sm">
+      <div>
+        <span class="font-medium text-forest-800">{{ rb.title }}</span>
+        <span class="text-forest-400 ml-1">— {{ rb.author }}</span>
+        <span class="text-xs text-forest-300 ml-2">suggested by {{ rb.added_by_user.name }}</span>
+      </div>
+      <div class="flex gap-2">
+        <form method="post" action="/admin/read-books/{{ rb.id }}/approve">
+          <button class="text-forest-500 hover:text-forest-700 text-xs font-semibold">Approve</button>
+        </form>
+        <form method="post" action="/admin/read-books/{{ rb.id }}/reject">
+          <button class="text-red-400 hover:text-red-600 text-xs font-medium">Reject</button>
+        </form>
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 <!-- Previously read books -->
 <section class="mb-8 bg-white border border-forest-100 rounded-xl p-5 shadow-sm">
   <h2 class="font-semibold text-forest-600 mb-3">Previously Read Books</h2>

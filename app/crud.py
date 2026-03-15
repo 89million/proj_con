@@ -300,6 +300,41 @@ async def delete_read_book(db: AsyncSession, read_book_id: int) -> bool:
     return True
 
 
+async def get_approved_read_books(db: AsyncSession) -> list[ReadBook]:
+    result = await db.execute(
+        select(ReadBook).where(ReadBook.pending.is_(False)).order_by(ReadBook.title)
+    )
+    return list(result.scalars().all())
+
+
+async def get_pending_read_books(db: AsyncSession) -> list[ReadBook]:
+    result = await db.execute(
+        select(ReadBook)
+        .where(ReadBook.pending.is_(True))
+        .options(selectinload(ReadBook.added_by_user))
+        .order_by(ReadBook.added_at)
+    )
+    return list(result.scalars().all())
+
+
+async def submit_read_book(db: AsyncSession, title: str, author: str, added_by: int) -> ReadBook:
+    rb = ReadBook(title=title, author=author, won=False, pending=True, added_by=added_by)
+    db.add(rb)
+    await db.commit()
+    await db.refresh(rb)
+    return rb
+
+
+async def approve_read_book(db: AsyncSession, read_book_id: int) -> bool:
+    result = await db.execute(select(ReadBook).where(ReadBook.id == read_book_id))
+    rb = result.scalar_one_or_none()
+    if rb is None:
+        return False
+    rb.pending = False
+    await db.commit()
+    return True
+
+
 # ---------------------------------------------------------------------------
 # Borda votes
 # ---------------------------------------------------------------------------

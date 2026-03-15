@@ -1,30 +1,88 @@
 {% extends "base.html" %}
-{% block title %}Season History — Book Club{% endblock %}
+{% block title %}History — Book Club{% endblock %}
 {% block content %}
 
-<h1 class="font-serif text-3xl font-bold text-forest-700 mb-6">Season History</h1>
+<h1 class="font-serif text-3xl font-bold text-forest-700 mb-6">History</h1>
 
-{% if seasons_with_winners %}
-  <div class="flex flex-col gap-4">
-    {% for season, winner in seasons_with_winners %}
-      <a href="/history/{{ season.id }}"
-         class="block bg-white border border-forest-200 rounded-xl px-6 py-5 shadow-sm hover:shadow-md transition hover:border-forest-400">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="font-semibold text-forest-800 text-lg">{{ season.name }}</p>
-            {% if winner %}
-              <p class="text-forest-500 mt-0.5">🏆 <span class="font-medium">{{ winner.title }}</span> by {{ winner.author }}</p>
-            {% else %}
-              <p class="text-forest-300 text-sm mt-0.5">No winner recorded</p>
-            {% endif %}
+<!-- Tabs -->
+<div class="flex gap-4 border-b border-forest-200 mb-6">
+  <a href="/history?tab=seasons"
+     class="pb-2 text-sm font-medium {{ 'border-b-2 border-forest-500 text-forest-700' if tab == 'seasons' else 'text-forest-400 hover:text-forest-600' }}">
+    Seasons
+  </a>
+  <a href="/history?tab=books"
+     class="pb-2 text-sm font-medium {{ 'border-b-2 border-forest-500 text-forest-700' if tab == 'books' else 'text-forest-400 hover:text-forest-600' }}">
+    Books We've Read
+  </a>
+</div>
+
+{% if tab == 'seasons' %}
+
+  {% if seasons_with_winners %}
+    <div class="flex flex-col gap-4">
+      {% for season, winner in seasons_with_winners %}
+        <a href="/history/{{ season.id }}"
+           class="block bg-white border border-forest-200 rounded-xl px-6 py-5 shadow-sm hover:shadow-md transition hover:border-forest-400">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="font-semibold text-forest-800 text-lg">{{ season.name }}</p>
+              {% if winner %}
+                <p class="text-forest-500 mt-0.5">&#127942; <span class="font-medium">{{ winner.title }}</span> by {{ winner.author }}</p>
+              {% else %}
+                <p class="text-forest-300 text-sm mt-0.5">No winner recorded</p>
+              {% endif %}
+            </div>
+            <span class="text-forest-300 text-sm">View &rarr;</span>
           </div>
-          <span class="text-forest-300 text-sm">View →</span>
-        </div>
-      </a>
-    {% endfor %}
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-forest-400">No completed seasons yet.</p>
+  {% endif %}
+
+{% elif tab == 'books' %}
+
+  <!-- Submit a book form -->
+  <div class="bg-white border border-forest-200 rounded-xl px-6 py-5 shadow-sm mb-6">
+    <p class="text-sm font-medium text-forest-700 mb-3">Remember a book we read? Submit it for admin approval.</p>
+    {% if submitted %}
+      <div class="bg-forest-50 border border-forest-200 rounded-lg px-4 py-2 text-sm text-forest-600 mb-3">
+        Thanks! Your suggestion has been submitted for admin approval.
+      </div>
+    {% endif %}
+    <form method="post" action="/history/suggest-book" class="flex flex-col sm:flex-row gap-2">
+      <input type="text" name="title" placeholder="Title" required
+             class="flex-1 border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+      <input type="text" name="author" placeholder="Author" required
+             class="flex-1 border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+      <button type="submit"
+              class="bg-forest-600 hover:bg-forest-500 text-white font-semibold px-4 py-2 rounded-lg text-sm transition">
+        Submit
+      </button>
+    </form>
   </div>
-{% else %}
-  <p class="text-forest-400">No completed seasons yet.</p>
+
+  <!-- Book list -->
+  {% if read_books %}
+    <div class="flex flex-col gap-2">
+      {% for rb in read_books %}
+        <div class="bg-white border border-forest-200 rounded-lg px-5 py-3 flex items-center justify-between">
+          <div>
+            <span class="font-medium text-forest-800">{{ rb.title }}</span>
+            <span class="text-forest-500 text-sm">by {{ rb.author }}</span>
+          </div>
+          {% if rb.won %}
+            <span class="text-xs bg-forest-100 text-forest-600 px-2 py-0.5 rounded-full font-medium">&#127942; Winner</span>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    <p class="text-forest-400 text-xs mt-4">{{ read_books | length }} book{{ 's' if read_books | length != 1 else '' }} total</p>
+  {% else %}
+    <p class="text-forest-400">No books recorded yet. Be the first to add one!</p>
+  {% endif %}
+
 {% endif %}
 
 {% endblock %}
