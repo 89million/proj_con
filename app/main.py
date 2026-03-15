@@ -1,5 +1,7 @@
 """FastAPI application — all routes."""
 
+import html as _html
+
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -23,6 +25,7 @@ app = FastAPI(title="Book Club")
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
+templates.env.filters["unescape"] = _html.unescape
 
 
 # ---------------------------------------------------------------------------
@@ -660,9 +663,7 @@ async def suggest_description(
         text = result.text.strip()
     except Exception:
         text = ""
-    import html
-
-    text = html.escape(text)
+    text = _html.escape(text)
     attrs = 'id="description" name="description" rows="3" maxlength="700"'
     return HTMLResponse(f'<textarea {attrs} class="{css}">{text}</textarea>')
 
@@ -924,3 +925,142 @@ async def delete_book(
 ):
     await crud.delete_book(db, book_id)
     return RedirectResponse("/admin", status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# Feature ideas
+# ---------------------------------------------------------------------------
+
+
+@app.get("/ideas", response_class=HTMLResponse)
+async def ideas_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    ideas = await crud.get_all_ideas(db)
+    upvoted_ids = await crud.get_user_upvoted_idea_ids(db, user.id)
+    idea_count = await crud.get_active_idea_count_for_user(db, user.id)
+    return templates.TemplateResponse(
+        "ideas.html",
+        {
+            "request": request,
+            "user": user,
+            "ideas": ideas,
+            "upvoted_ids": upvoted_ids,
+            "idea_count": idea_count,
+            "max_ideas": 3,
+        },
+    )
+
+
+@app.post("/ideas", response_class=HTMLResponse)
+async def submit_idea(
+    title: str = Form(...),
+    description: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    title = title.strip()
+    description = description.strip()
+
+    if not title or not description:
+        return RedirectResponse("/ideas", status_code=302)
+
+    count = await crud.get_active_idea_count_for_user(db, user.id)
+    if count >= 3:
+        return RedirectResponse("/ideas", status_code=302)
+
+    complexity = None
+    try:
+        from google import genai as google_genai
+
+        client = google_genai.Client(api_key=settings.gemini_api_key)
+        result = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=(
+                "A small book club web app (FastAPI, SQLAlchemy, Jinja2, HTMX, Tailwind). "
+                "Models: User, Season, Book, ReadBook, BordaVote, Seed, BracketMatchup, "
+                "BracketVote, SeasonParticipant, FeatureIdea, IdeaUpvote. "
+                f"A member suggested this feature: '{title}: {description}'. "
+                "Write a short assessment in this exact format (no extra text):\n"
+                "[RATING] — [explanation in 20 words or less mentioning specific "
+                "tables, routes, or templates involved]\n"
+                "RATING must be one of: Quick Win, Moderate, Large, Ambitious."
+            ),
+        )
+        raw = result.text.strip()
+        for rating in ("Quick Win", "Moderate", "Large", "Ambitious"):
+            if raw.startswith(rating):
+                complexity = raw
+                break
+    except Exception:
+        pass
+
+    await crud.create_idea(db, user.id, title, description, complexity)
+    return RedirectResponse("/ideas", status_code=302)
+
+
+@app.post("/ideas/{idea_id}/upvote", response_class=HTMLResponse)
+async def upvote_idea(
+    idea_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    await crud.toggle_upvote(db, idea_id, user.id)
+    return RedirectResponse("/ideas", status_code=302)
+
+
+@app.post("/ideas/{idea_id}/delete", response_class=HTMLResponse)
+async def delete_idea(
+    idea_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    await crud.delete_idea(db, idea_id)
+    return RedirectResponse("/ideas", status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# Member stats (admin-only)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/admin/members/{user_id}", response_class=HTMLResponse)
+async def admin_member_stats(
+    user_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    target = await crud.get_user_by_id(db, user_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    season_count = await crud.get_season_count_for_user(db, user_id)
+    books = await crud.get_books_by_user(db, user_id)
+    winning_ids = await crud.get_winning_book_ids(db)
+    correct, total = await crud.get_bracket_vote_accuracy(db, user_id)
+
+    win_count = sum(1 for b in books if b.id in winning_ids)
+    win_rate = (win_count / season_count * 100) if season_count > 0 else 0
+    batting_avg = (correct / total * 100) if total > 0 else None
+
+    books_with_status = [(b, b.id in winning_ids) for b in books]
+
+    return templates.TemplateResponse(
+        "admin_member_stats.html",
+        {
+            "request": request,
+            "user": current_user,
+            "target": target,
+            "season_count": season_count,
+            "book_count": len(books),
+            "win_count": win_count,
+            "win_rate": win_rate,
+            "batting_avg": batting_avg,
+            "correct_votes": correct,
+            "total_votes": total,
+            "books_with_status": books_with_status,
+        },
+    )

@@ -10,6 +10,8 @@ from app.models import (
     BordaVote,
     BracketMatchup,
     BracketVote,
+    FeatureIdea,
+    IdeaUpvote,
     ReadBook,
     Season,
     SeasonParticipant,
@@ -818,3 +820,133 @@ async def users_who_havent_voted_round(
         .order_by(User.name)
     )
     return list(result.scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# Feature ideas
+# ---------------------------------------------------------------------------
+
+
+async def get_all_ideas(db: AsyncSession) -> list[FeatureIdea]:
+    result = await db.execute(
+        select(FeatureIdea)
+        .options(selectinload(FeatureIdea.upvotes), selectinload(FeatureIdea.author))
+        .order_by(FeatureIdea.created_at.desc())
+    )
+    ideas = list(result.scalars().all())
+    ideas.sort(key=lambda i: len(i.upvotes), reverse=True)
+    return ideas
+
+
+async def get_active_idea_count_for_user(db: AsyncSession, user_id: int) -> int:
+    result = await db.execute(
+        select(func.count()).select_from(FeatureIdea).where(FeatureIdea.author_id == user_id)
+    )
+    return result.scalar_one()
+
+
+async def create_idea(
+    db: AsyncSession, author_id: int, title: str, description: str, complexity: str | None
+) -> FeatureIdea:
+    idea = FeatureIdea(
+        author_id=author_id, title=title, description=description, complexity=complexity
+    )
+    db.add(idea)
+    await db.commit()
+    await db.refresh(idea)
+    return idea
+
+
+async def toggle_upvote(db: AsyncSession, idea_id: int, user_id: int) -> bool:
+    """Toggle upvote. Returns True if upvote was added, False if removed."""
+    result = await db.execute(
+        select(IdeaUpvote).where(IdeaUpvote.idea_id == idea_id, IdeaUpvote.user_id == user_id)
+    )
+    existing = result.scalar_one_or_none()
+    if existing:
+        await db.delete(existing)
+        await db.commit()
+        return False
+    db.add(IdeaUpvote(idea_id=idea_id, user_id=user_id))
+    await db.commit()
+    return True
+
+
+async def delete_idea(db: AsyncSession, idea_id: int) -> bool:
+    result = await db.execute(select(FeatureIdea).where(FeatureIdea.id == idea_id))
+    idea = result.scalar_one_or_none()
+    if idea is None:
+        return False
+    await db.delete(idea)
+    await db.commit()
+    return True
+
+
+async def get_user_upvoted_idea_ids(db: AsyncSession, user_id: int) -> set[int]:
+    result = await db.execute(select(IdeaUpvote.idea_id).where(IdeaUpvote.user_id == user_id))
+    return set(result.scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# Member stats (admin-only)
+# ---------------------------------------------------------------------------
+
+
+async def get_books_by_user(db: AsyncSession, user_id: int) -> list[Book]:
+    result = await db.execute(
+        select(Book)
+        .where(Book.submitter_id == user_id)
+        .options(selectinload(Book.season))
+        .order_by(Book.submitted_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def get_season_count_for_user(db: AsyncSession, user_id: int) -> int:
+    result = await db.execute(
+        select(func.count())
+        .select_from(SeasonParticipant)
+        .where(SeasonParticipant.user_id == user_id)
+    )
+    return result.scalar_one()
+
+
+async def get_winning_book_ids(db: AsyncSession) -> set[int]:
+    """Return the set of book IDs that won their season's bracket."""
+    subq = (
+        select(
+            BracketMatchup.season_id,
+            func.max(BracketMatchup.round).label("max_round"),
+        )
+        .group_by(BracketMatchup.season_id)
+        .subquery()
+    )
+    result = await db.execute(
+        select(BracketMatchup.winner_id)
+        .join(
+            subq,
+            and_(
+                BracketMatchup.season_id == subq.c.season_id,
+                BracketMatchup.round == subq.c.max_round,
+            ),
+        )
+        .where(BracketMatchup.winner_id.isnot(None))
+    )
+    return set(result.scalars().all())
+
+
+async def get_bracket_vote_accuracy(db: AsyncSession, user_id: int) -> tuple[int, int]:
+    """Return (correct_votes, total_resolved_votes) for bracket voting accuracy."""
+    result = await db.execute(
+        select(BracketVote.book_id, BracketMatchup.winner_id)
+        .join(BracketMatchup, BracketVote.matchup_id == BracketMatchup.id)
+        .where(
+            BracketVote.user_id == user_id,
+            BracketMatchup.winner_id.isnot(None),
+            BracketMatchup.book_a_id != BracketMatchup.book_b_id,
+        )
+    )
+    rows = result.all()
+    total = len(rows)
+    correct = sum(1 for vote_book, winner in rows if vote_book == winner)
+    return correct, total

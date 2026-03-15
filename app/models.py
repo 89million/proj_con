@@ -195,3 +195,36 @@ class SeasonParticipant(Base):
 
     season: Mapped["Season"] = relationship("Season", back_populates="participants")
     user: Mapped["User"] = relationship("User", back_populates="season_participations")
+
+
+class FeatureIdea(Base):
+    """A user-submitted feature idea for the app."""
+
+    __tablename__ = "feature_ideas"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    author_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    complexity: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    author: Mapped["User"] = relationship("User")
+    upvotes: Mapped[list["IdeaUpvote"]] = relationship(
+        "IdeaUpvote", back_populates="idea", cascade="all, delete-orphan"
+    )
+
+
+class IdeaUpvote(Base):
+    """Anonymous upvote on a feature idea (one per user per idea)."""
+
+    __tablename__ = "idea_upvotes"
+    __table_args__ = (
+        UniqueConstraint("idea_id", "user_id", name="uq_one_upvote_per_user_per_idea"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    idea_id: Mapped[int] = mapped_column(ForeignKey("feature_ideas.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+    idea: Mapped["FeatureIdea"] = relationship("FeatureIdea", back_populates="upvotes")

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}{{ target.name }} — Member Stats{% endblock %}
+{% block content %}
+
+<a href="/admin" class="text-sm text-forest-400 hover:text-forest-600">&larr; Back to Admin</a>
+
+<!-- Header -->
+<div class="flex items-center gap-4 mt-4 mb-6">
+  {% if target.avatar_url %}
+    <img src="{{ target.avatar_url }}" class="w-14 h-14 rounded-full border-2 border-forest-200" alt="{{ target.name }}" />
+  {% endif %}
+  <div>
+    <h1 class="font-serif text-2xl font-bold text-forest-700">{{ target.name }}</h1>
+    <p class="text-forest-400 text-sm">Member since {{ target.created_at.strftime('%b %Y') }}</p>
+  </div>
+</div>
+
+<!-- Stats grid -->
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+  <div class="bg-white border border-forest-100 rounded-xl p-4 shadow-sm text-center">
+    <p class="text-2xl font-bold text-forest-700">{{ season_count }}</p>
+    <p class="text-xs text-forest-400 mt-1">Seasons</p>
+  </div>
+  <div class="bg-white border border-forest-100 rounded-xl p-4 shadow-sm text-center">
+    <p class="text-2xl font-bold text-forest-700">{{ book_count }}</p>
+    <p class="text-xs text-forest-400 mt-1">Books Submitted</p>
+  </div>
+  <div class="bg-white border border-forest-100 rounded-xl p-4 shadow-sm text-center">
+    <p class="text-2xl font-bold text-forest-700">{{ win_count }}</p>
+    <p class="text-xs text-forest-400 mt-1">Wins ({{ '%.0f' % win_rate }}%)</p>
+  </div>
+  <div class="bg-white border border-forest-100 rounded-xl p-4 shadow-sm text-center">
+    {% if batting_avg is not none %}
+      <p class="text-2xl font-bold text-forest-700">{{ '%.0f' % batting_avg }}%</p>
+      <p class="text-xs text-forest-400 mt-1">Bracket Accuracy ({{ correct_votes }}/{{ total_votes }})</p>
+    {% else %}
+      <p class="text-2xl font-bold text-forest-300">N/A</p>
+      <p class="text-xs text-forest-400 mt-1">Bracket Accuracy</p>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Submitted books -->
+<section class="bg-white border border-forest-100 rounded-xl p-5 shadow-sm">
+  <h2 class="font-semibold text-forest-600 mb-3">Submitted Books</h2>
+  {% if books_with_status %}
+  <ul class="divide-y divide-forest-50">
+    {% for book, won in books_with_status %}
+    <li class="flex items-center justify-between py-2 text-sm">
+      <div>
+        <span class="font-medium text-forest-800">{{ book.title }}</span>
+        <span class="text-forest-400 ml-1">— {{ book.author }}</span>
+        <span class="text-forest-300 text-xs ml-2">{{ book.season.name }}</span>
+      </div>
+      {% if won %}
+        <span class="text-xs bg-forest-100 text-forest-600 px-2 py-0.5 rounded-full font-medium">&#127942; Won</span>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="text-forest-300 italic text-sm">No books submitted yet.</p>
+  {% endif %}
+</section>
+
+{% endblock %}
