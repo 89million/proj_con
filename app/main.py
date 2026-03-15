@@ -19,7 +19,7 @@ from app.auth import (
 )
 from app.config import settings
 from app.database import get_db
-from app.models import SeasonState, User
+from app.models import IdeaStatus, SeasonState, User
 
 app = FastAPI(title="Book Club")
 
@@ -1018,6 +1018,22 @@ async def delete_idea(
     user: User = Depends(require_admin),
 ):
     await crud.delete_idea(db, idea_id)
+    return RedirectResponse("/ideas", status_code=302)
+
+
+@app.post("/ideas/{idea_id}/status", response_class=HTMLResponse)
+async def update_idea_status(
+    idea_id: int,
+    status: str = Form(...),
+    admin_note: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    try:
+        idea_status = IdeaStatus(status)
+    except ValueError:
+        return RedirectResponse("/ideas", status_code=302)
+    await crud.update_idea_status(db, idea_id, idea_status, admin_note.strip())
     return RedirectResponse("/ideas", status_code=302)
 
 

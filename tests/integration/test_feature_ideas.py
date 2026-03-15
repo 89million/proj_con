@@ -2,7 +2,7 @@
 
 from sqlalchemy import select
 
-from app.models import FeatureIdea, IdeaUpvote
+from app.models import FeatureIdea, IdeaStatus, IdeaUpvote
 
 from .conftest import make_client
 
@@ -170,3 +170,103 @@ async def test_idea_xss_escaped_on_render(engine, db, test_user, monkeypatch):
     assert '<script>alert("xss")</script>' not in resp.text
     assert "&lt;script&gt;" in resp.text
     assert 'onerror="alert(1)"' not in resp.text
+
+
+async def test_new_idea_has_proposed_status(engine, db, test_user, monkeypatch):
+    """Newly submitted ideas default to 'proposed' status."""
+    monkeypatch.setattr("app.main.settings.gemini_api_key", "")
+
+    async with make_client(engine, test_user) as client:
+        await client.post(
+            "/ideas",
+            data={"title": "Status Test", "description": "Check default status"},
+        )
+
+    result = await db.execute(select(FeatureIdea).where(FeatureIdea.title == "Status Test"))
+    idea = result.scalar_one()
+    assert idea.status == IdeaStatus.proposed
+    assert idea.admin_note is None
+
+
+async def test_admin_update_idea_status(engine, db, test_admin, test_user):
+    """Admin can change idea status and add a note."""
+    from app import crud
+
+    idea = await crud.create_idea(db, test_user.id, "Track Me", "Some idea", None)
+
+    async with make_client(engine, test_admin) as client:
+        resp = await client.post(
+            f"/ideas/{idea.id}/status",
+            data={"status": "in_progress", "admin_note": "Working on it now"},
+        )
+
+    assert resp.status_code == 302
+
+    await db.refresh(idea)
+    assert idea.status == IdeaStatus.in_progress
+    assert idea.admin_note == "Working on it now"
+
+
+async def test_admin_update_status_to_done(engine, db, test_admin, test_user):
+    """Admin can mark an idea as done."""
+    from app import crud
+
+    idea = await crud.create_idea(db, test_user.id, "Finish Me", "Desc", None)
+
+    async with make_client(engine, test_admin) as client:
+        await client.post(
+            f"/ideas/{idea.id}/status",
+            data={"status": "done", "admin_note": "Shipped in v2.1"},
+        )
+
+    await db.refresh(idea)
+    assert idea.status == IdeaStatus.done
+    assert idea.admin_note == "Shipped in v2.1"
+
+
+async def test_admin_update_status_wont_do(engine, db, test_admin, test_user):
+    """Admin can mark an idea as won't do."""
+    from app import crud
+
+    idea = await crud.create_idea(db, test_user.id, "Nope", "Desc", None)
+
+    async with make_client(engine, test_admin) as client:
+        await client.post(
+            f"/ideas/{idea.id}/status",
+            data={"status": "wont_do", "admin_note": "Out of scope"},
+        )
+
+    await db.refresh(idea)
+    assert idea.status == IdeaStatus.wont_do
+
+
+async def test_status_badge_displayed(engine, db, test_admin, test_user):
+    """Status badge and admin note are visible on the ideas page."""
+    from app import crud
+
+    idea = await crud.create_idea(db, test_user.id, "Visible Status", "Desc", None)
+    await crud.update_idea_status(db, idea.id, IdeaStatus.in_progress, "ETA next week")
+
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/ideas")
+
+    assert resp.status_code == 200
+    assert "In Progress" in resp.text
+    assert "ETA next week" in resp.text
+
+
+async def test_invalid_status_ignored(engine, db, test_admin, test_user):
+    """Invalid status value redirects without changing anything."""
+    from app import crud
+
+    idea = await crud.create_idea(db, test_user.id, "Safe", "Desc", None)
+
+    async with make_client(engine, test_admin) as client:
+        resp = await client.post(
+            f"/ideas/{idea.id}/status",
+            data={"status": "invalid_value", "admin_note": ""},
+        )
+
+    assert resp.status_code == 302
+    await db.refresh(idea)
+    assert idea.status == IdeaStatus.proposed

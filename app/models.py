@@ -24,6 +24,13 @@ class SeasonState(str, enum.Enum):
     complete = "complete"
 
 
+class IdeaStatus(str, enum.Enum):
+    proposed = "proposed"
+    in_progress = "in_progress"
+    done = "done"
+    wont_do = "wont_do"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -207,6 +214,10 @@ class FeatureIdea(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     complexity: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[IdeaStatus] = mapped_column(
+        Enum(IdeaStatus), default=IdeaStatus.proposed, server_default="proposed"
+    )
+    admin_note: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     author: Mapped["User"] = relationship("User")

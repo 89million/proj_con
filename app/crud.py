@@ -11,6 +11,7 @@ from app.models import (
     BracketMatchup,
     BracketVote,
     FeatureIdea,
+    IdeaStatus,
     IdeaUpvote,
     ReadBook,
     Season,
@@ -878,6 +879,19 @@ async def delete_idea(db: AsyncSession, idea_id: int) -> bool:
     if idea is None:
         return False
     await db.delete(idea)
+    await db.commit()
+    return True
+
+
+async def update_idea_status(
+    db: AsyncSession, idea_id: int, status: IdeaStatus, admin_note: str | None
+) -> bool:
+    result = await db.execute(select(FeatureIdea).where(FeatureIdea.id == idea_id))
+    idea = result.scalar_one_or_none()
+    if idea is None:
+        return False
+    idea.status = status
+    idea.admin_note = admin_note or None
     await db.commit()
     return True
 
