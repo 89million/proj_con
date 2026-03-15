@@ -290,17 +290,6 @@ async def test_complete_page_shows_winner_page_count(
     assert str(winner.page_count) in resp.text
 
 
-async def test_complete_page_shows_submitter_name(
-    engine, test_user, complete_season_with_submitter, test_admin
-):
-    """The winner card credits the submitter by name."""
-    async with make_client(engine, test_user) as client:
-        resp = await client.get("/complete")
-    assert resp.status_code == 200
-    assert "Submitted by" in resp.text
-    assert test_admin.name in resp.text
-
-
 async def test_complete_page_shows_view_past_seasons_link(
     engine, test_user, complete_season_with_submitter
 ):

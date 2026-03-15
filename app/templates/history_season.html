@@ -13,9 +13,6 @@
     <div class="text-4xl mb-2">🏆</div>
     <p class="text-2xl font-bold text-forest-800">{{ winner_book.title }}</p>
     <p class="text-forest-500 mt-1">by {{ winner_book.author }}</p>
-    {% if winner_book.submitter %}
-      <p class="text-forest-400 text-sm mt-2">Submitted by {{ winner_book.submitter.name }}</p>
-    {% endif %}
   </div>
 {% endif %}
 
@@ -30,7 +27,6 @@
             <th class="px-4 py-2 text-left w-10">Seed</th>
             <th class="px-4 py-2 text-left">Book</th>
             <th class="px-4 py-2 text-left">Author</th>
-            <th class="px-4 py-2 text-left">Submitted by</th>
             {% if borda_scores %}<th class="px-4 py-2 text-right">Pts</th>{% endif %}
           </tr>
         </thead>
@@ -58,9 +54,6 @@
                 {% endif %}
               </td>
               <td class="px-4 py-2 text-forest-400">{{ seed.book.author }}</td>
-              <td class="px-4 py-2 text-forest-400">
-                {% if seed.book.submitter %}{{ seed.book.submitter.name }}{% endif %}
-              </td>
               {% if borda_scores %}
                 <td class="px-4 py-2 text-right font-mono text-forest-500">{{ borda_scores.get(seed.book.id, 0) }}</td>
               {% endif %}

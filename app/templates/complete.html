@@ -14,11 +14,6 @@
       <p class="text-3xl font-bold text-forest-800">{{ winner_book.title }}</p>
       <p class="text-forest-500 mt-2 text-lg">by {{ winner_book.author }}</p>
       <p class="text-forest-300 text-sm mt-1">{{ winner_book.page_count }} pages</p>
-      {% if winner_book.submitter %}
-        <p class="text-forest-400 text-sm mt-4 border-t border-forest-100 pt-3">
-          Submitted by <span class="font-medium">{{ winner_book.submitter.name }}</span>
-        </p>
-      {% endif %}
     </div>
   {% else %}
     <p class="text-forest-400 mt-6">Results are being tallied...</p>
