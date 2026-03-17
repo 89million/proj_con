@@ -2,6 +2,7 @@
 
 import html as _html
 
+import httpx
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -666,6 +667,42 @@ async def suggest_description(
     text = _html.escape(text)
     attrs = 'id="description" name="description" rows="3" maxlength="700"'
     return HTMLResponse(f'<textarea {attrs} class="{css}">{text}</textarea>')
+
+
+@app.get("/api/book-search")
+async def book_search(
+    q: str = "",
+    _user: User = Depends(require_user),
+):
+    """Proxy OpenLibrary search for autocomplete suggestions."""
+    q = q.strip()
+    if len(q) < 3:
+        return []
+
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        try:
+            resp = await client.get(
+                "https://openlibrary.org/search.json",
+                params={"q": q, "limit": 5, "fields": "title,author_name,number_of_pages_median"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception:
+            return []
+
+    results = []
+    for doc in data.get("docs", [])[:5]:
+        title = doc.get("title", "")
+        authors = doc.get("author_name", [])
+        pages = doc.get("number_of_pages_median")
+        results.append(
+            {
+                "title": title,
+                "author": authors[0] if authors else "",
+                "page_count": pages,
+            }
+        )
+    return results
 
 
 @app.get("/partials/waiting-on", response_class=HTMLResponse)

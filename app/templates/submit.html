@@ -34,14 +34,16 @@
   {% endif %}
 
   <form method="post" action="/submit" class="mt-6 space-y-4 bg-white border border-forest-100 rounded-xl p-6 shadow-sm">
-    <div>
+    <div class="relative">
       <label class="block text-sm font-medium text-forest-700 mb-1" for="title">Book Title</label>
       <input
-        id="title" name="title" type="text" required
+        id="title" name="title" type="text" required autocomplete="off"
         value="{{ form.title if form is defined else '' }}"
         class="w-full border border-forest-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900"
         placeholder="e.g. The Name of the Wind"
       />
+      <ul id="book-suggestions"
+          class="absolute z-20 left-0 right-0 bg-white border border-forest-200 rounded-lg mt-1 shadow-lg max-h-60 overflow-y-auto hidden"></ul>
     </div>
     <div>
       <label class="block text-sm font-medium text-forest-700 mb-1" for="author">Author</label>
@@ -119,5 +121,57 @@
   </ul>
 </div>
 {% endif %}
+
+<script>
+(function() {
+  const titleInput = document.getElementById('title');
+  const suggestions = document.getElementById('book-suggestions');
+  if (!titleInput || !suggestions) return;
+
+  let debounceTimer = null;
+
+  titleInput.addEventListener('input', function() {
+    clearTimeout(debounceTimer);
+    const q = this.value.trim();
+    if (q.length < 3) { suggestions.classList.add('hidden'); return; }
+
+    debounceTimer = setTimeout(async () => {
+      try {
+        const resp = await fetch('/api/book-search?q=' + encodeURIComponent(q));
+        const books = await resp.json();
+        if (!books.length) { suggestions.classList.add('hidden'); return; }
+
+        suggestions.innerHTML = books.map(b => {
+          const pages = b.page_count ? b.page_count + 'pp' : 'pages unknown';
+          return '<li class="px-3 py-2 hover:bg-forest-50 cursor-pointer text-sm border-b border-forest-50 last:border-0"'
+            + ' data-title="' + b.title.replace(/"/g, '&quot;') + '"'
+            + ' data-author="' + b.author.replace(/"/g, '&quot;') + '"'
+            + ' data-pages="' + (b.page_count || '') + '">'
+            + '<span class="font-medium text-forest-800">' + b.title + '</span>'
+            + ' <span class="text-forest-400">by ' + b.author + '</span>'
+            + ' <span class="text-forest-300 text-xs">(' + pages + ')</span>'
+            + '</li>';
+        }).join('');
+        suggestions.classList.remove('hidden');
+      } catch(e) { suggestions.classList.add('hidden'); }
+    }, 300);
+  });
+
+  suggestions.addEventListener('click', function(e) {
+    const li = e.target.closest('li');
+    if (!li) return;
+    document.getElementById('title').value = li.dataset.title;
+    document.getElementById('author').value = li.dataset.author;
+    if (li.dataset.pages) document.getElementById('page_count').value = li.dataset.pages;
+    suggestions.classList.add('hidden');
+  });
+
+  document.addEventListener('click', function(e) {
+    if (!titleInput.contains(e.target) && !suggestions.contains(e.target)) {
+      suggestions.classList.add('hidden');
+    }
+  });
+})();
+</script>
 
 {% endblock %}

@@ -57,9 +57,13 @@
       </div>
     {% endif %}
     <form method="post" action="/history/suggest-book" class="flex flex-col sm:flex-row gap-2">
-      <input type="text" name="title" placeholder="Title" required
-             class="flex-1 border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
-      <input type="text" name="author" placeholder="Author" required
+      <div class="flex-1 relative">
+        <input type="text" name="title" id="rb-title" placeholder="Title" required autocomplete="off"
+               class="w-full border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+        <ul id="rb-suggestions"
+            class="absolute z-20 left-0 right-0 bg-white border border-forest-200 rounded-lg mt-1 shadow-lg max-h-60 overflow-y-auto hidden"></ul>
+      </div>
+      <input type="text" name="author" id="rb-author" placeholder="Author" required
              class="flex-1 border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
       <button type="submit"
               class="bg-forest-600 hover:bg-forest-500 text-white font-semibold px-4 py-2 rounded-lg text-sm transition">
@@ -89,5 +93,53 @@
   {% endif %}
 
 {% endif %}
+
+<script>
+(function() {
+  const titleInput = document.getElementById('rb-title');
+  const suggestions = document.getElementById('rb-suggestions');
+  if (!titleInput || !suggestions) return;
+
+  let debounceTimer = null;
+
+  titleInput.addEventListener('input', function() {
+    clearTimeout(debounceTimer);
+    const q = this.value.trim();
+    if (q.length < 3) { suggestions.classList.add('hidden'); return; }
+
+    debounceTimer = setTimeout(async () => {
+      try {
+        const resp = await fetch('/api/book-search?q=' + encodeURIComponent(q));
+        const books = await resp.json();
+        if (!books.length) { suggestions.classList.add('hidden'); return; }
+
+        suggestions.innerHTML = books.map(b => {
+          return '<li class="px-3 py-2 hover:bg-forest-50 cursor-pointer text-sm border-b border-forest-50 last:border-0"'
+            + ' data-title="' + b.title.replace(/"/g, '&quot;') + '"'
+            + ' data-author="' + b.author.replace(/"/g, '&quot;') + '">'
+            + '<span class="font-medium text-forest-800">' + b.title + '</span>'
+            + ' <span class="text-forest-400">by ' + b.author + '</span>'
+            + '</li>';
+        }).join('');
+        suggestions.classList.remove('hidden');
+      } catch(e) { suggestions.classList.add('hidden'); }
+    }, 300);
+  });
+
+  suggestions.addEventListener('click', function(e) {
+    const li = e.target.closest('li');
+    if (!li) return;
+    document.getElementById('rb-title').value = li.dataset.title;
+    document.getElementById('rb-author').value = li.dataset.author;
+    suggestions.classList.add('hidden');
+  });
+
+  document.addEventListener('click', function(e) {
+    if (!titleInput.contains(e.target) && !suggestions.contains(e.target)) {
+      suggestions.classList.add('hidden');
+    }
+  });
+})();
+</script>
 
 {% endblock %}

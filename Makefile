@@ -1,7 +1,7 @@
 CONDA_ENV_NAME = proj_con_3.12
 PYTHON = python
 
-.PHONY: build-env install format fmt lint unit integration test cov ci
+.PHONY: build-env install format fmt lint unit integration test cov ci dev
 
 build-env:
 	conda create -n $(CONDA_ENV_NAME) python=3.12 -y
@@ -31,3 +31,6 @@ cov:
 	pytest tests/ --cov=app --cov-report=term-missing
 
 ci: install lint test
+
+dev:
+	alembic upgrade head && uvicorn app.main:app --reload
