@@ -683,7 +683,12 @@ async def book_search(
         try:
             resp = await client.get(
                 "https://openlibrary.org/search.json",
-                params={"q": q, "limit": 5, "fields": "title,author_name,number_of_pages_median"},
+                params={
+                    "title": q,
+                    "lang": "eng",
+                    "limit": 5,
+                    "fields": "title,author_name,number_of_pages_median",
+                },
             )
             resp.raise_for_status()
             data = resp.json()
