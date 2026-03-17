@@ -56,10 +56,13 @@
 <body class="text-forest-900 min-h-screen font-sans">
 
   <!-- Nav -->
-  <nav class="bg-forest-700 text-white px-6 py-3 flex items-center justify-between shadow-md border-b border-forest-600">
-    <a href="/" class="font-serif text-xl font-semibold tracking-tight">Stumbling Book Club</a>
-    <div class="flex items-center gap-4 text-sm">
+  <nav class="bg-forest-700 text-white px-6 py-3 shadow-md border-b border-forest-600">
+    <div class="flex items-center justify-between">
+      <a href="/" class="font-serif text-xl font-semibold tracking-tight">Stumbling Book Club</a>
+
       {% if user %}
+      <!-- Desktop nav -->
+      <div class="hidden md:flex items-center gap-4 text-sm">
         {% if user.avatar_url %}
           <img src="{{ user.avatar_url }}" class="w-8 h-8 rounded-full border-2 border-forest-400" alt="{{ user.name }}" />
         {% endif %}
@@ -70,10 +73,37 @@
           <a href="/admin" class="bg-forest-500 hover:bg-forest-400 px-3 py-1 rounded text-xs font-semibold transition">Admin</a>
         {% endif %}
         <a href="/auth/logout" class="hover:underline opacity-60 text-xs">Sign out</a>
+      </div>
+
+      <!-- Mobile hamburger -->
+      <button onclick="document.getElementById('mobile-menu').classList.toggle('hidden')"
+              class="md:hidden text-white focus:outline-none" aria-label="Menu">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
       {% else %}
-        <a href="/auth/login" class="bg-white text-forest-700 font-semibold px-4 py-1 rounded hover:bg-forest-50 transition">Sign in with Google</a>
+      <a href="/auth/login" class="bg-white text-forest-700 font-semibold px-4 py-1 rounded hover:bg-forest-50 transition text-sm">Sign in with Google</a>
       {% endif %}
     </div>
+
+    {% if user %}
+    <!-- Mobile menu (hidden by default) -->
+    <div id="mobile-menu" class="hidden md:hidden mt-3 pt-3 border-t border-forest-600 flex flex-col gap-3 text-sm">
+      <div class="flex items-center gap-2">
+        {% if user.avatar_url %}
+          <img src="{{ user.avatar_url }}" class="w-8 h-8 rounded-full border-2 border-forest-400" alt="{{ user.name }}" />
+        {% endif %}
+        <span class="font-medium opacity-90">{{ user.name }}</span>
+      </div>
+      <a href="/history" class="hover:underline opacity-80">History</a>
+      <a href="/ideas" class="hover:underline opacity-80">Ideas</a>
+      {% if user.is_admin %}
+        <a href="/admin" class="hover:underline opacity-80">Admin</a>
+      {% endif %}
+      <a href="/auth/logout" class="hover:underline opacity-80">Sign out</a>
+    </div>
+    {% endif %}
   </nav>
 
   {% block banner %}{% endblock %}
