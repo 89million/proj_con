@@ -79,6 +79,250 @@
   {% endif %}
 </section>
 
+<!-- God Mode — act on behalf of any user -->
+{% if active_season and active_season.state.value != "complete" %}
+<section class="mb-8 bg-white border border-purple-200 rounded-xl p-5 shadow-sm">
+  <h2 class="font-semibold text-purple-600 mb-3">God Mode</h2>
+
+  {% if active_season.state.value == "submit" %}
+    {% if god_mode.not_submitted %}
+      <p class="text-sm text-forest-500 mb-3">
+        <strong>{{ god_mode.not_submitted|length }}</strong> user{{ 's' if god_mode.not_submitted|length != 1 }} still need{{ '' if god_mode.not_submitted|length != 1 else 's' }} to submit:
+        {% for u in god_mode.not_submitted %}<span class="font-medium text-forest-700">{{ u.name }}</span>{{ ', ' if not loop.last }}{% endfor %}
+      </p>
+      <form method="post" action="/admin/god-mode/submit" class="space-y-3">
+        <div class="flex flex-wrap gap-3">
+          <select name="user_id" required
+                  class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 text-forest-900">
+            {% for u in god_mode.not_submitted %}
+            <option value="{{ u.id }}">{{ u.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="relative">
+          <input id="gm-title" name="title" type="text" required placeholder="Title" autocomplete="off"
+            class="w-full border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 text-forest-900" />
+          <ul id="gm-suggestions" class="absolute z-10 w-full bg-white border border-forest-200 rounded-lg mt-1 shadow-lg hidden max-h-60 overflow-y-auto"></ul>
+        </div>
+        <div class="flex flex-wrap gap-3">
+          <input id="gm-author" name="author" type="text" required placeholder="Author"
+            class="flex-1 min-w-[140px] border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 text-forest-900" />
+          <input id="gm-pages" name="page_count" type="number" required placeholder="Pages" min="1"
+            class="w-24 border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 text-forest-900" />
+        </div>
+        <textarea name="description" rows="2" placeholder="Description (optional)"
+          class="w-full border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 text-forest-900"></textarea>
+        <button class="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-purple-500 transition">
+          Submit on Behalf of User
+        </button>
+      </form>
+
+      <script>
+      (function() {
+        let debounceTimer;
+        const titleInput = document.getElementById('gm-title');
+        const suggestionsEl = document.getElementById('gm-suggestions');
+        const authorInput = document.getElementById('gm-author');
+        const pagesInput = document.getElementById('gm-pages');
+
+        titleInput.addEventListener('input', function() {
+          clearTimeout(debounceTimer);
+          const q = this.value.trim();
+          if (q.length < 3) { suggestionsEl.classList.add('hidden'); return; }
+          debounceTimer = setTimeout(async () => {
+            const resp = await fetch('/api/book-search?q=' + encodeURIComponent(q));
+            const books = await resp.json();
+            suggestionsEl.innerHTML = '';
+            if (!books.length) { suggestionsEl.classList.add('hidden'); return; }
+            books.forEach(b => {
+              const li = document.createElement('li');
+              li.className = 'px-3 py-2 hover:bg-forest-50 cursor-pointer text-sm border-b border-forest-50 last:border-0';
+              li.innerHTML = '<span class="font-medium text-forest-800">' + b.title + '</span> <span class="text-forest-400">by ' + b.author + '</span>' + (b.pages ? ' <span class="text-forest-300 text-xs">(' + b.pages + 'pp)</span>' : '');
+              li.addEventListener('click', () => {
+                titleInput.value = b.title;
+                authorInput.value = b.author;
+                if (b.pages) pagesInput.value = b.pages;
+                suggestionsEl.classList.add('hidden');
+              });
+              suggestionsEl.appendChild(li);
+            });
+            suggestionsEl.classList.remove('hidden');
+          }, 300);
+        });
+
+        document.addEventListener('click', (e) => {
+          if (!suggestionsEl.contains(e.target) && e.target !== titleInput) suggestionsEl.classList.add('hidden');
+        });
+      })();
+      </script>
+    {% else %}
+      <p class="text-sm text-green-600 font-medium">All participants have submitted.</p>
+    {% endif %}
+
+    <!-- Copy submissions from a previous season -->
+    {% set other_seasons = all_seasons | rejectattr('id', 'equalto', active_season.id) | selectattr('books') | list %}
+    {% if other_seasons %}
+    <div class="mt-4 pt-4 border-t border-purple-100">
+      <p class="text-sm text-purple-500 font-medium mb-2">Copy submissions from a previous season</p>
+      <form method="post" action="/admin/god-mode/copy-submissions" class="flex flex-wrap gap-3 items-end">
+        <select name="source_season_id" required
+                class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 text-forest-900">
+          {% for s in other_seasons %}
+          <option value="{{ s.id }}">{{ s.name }} ({{ s.books|length }} books)</option>
+          {% endfor %}
+        </select>
+        <button class="bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-purple-500 transition">
+          Copy Books
+        </button>
+      </form>
+      <p class="text-xs text-forest-400 mt-1">Skips users who already submitted or aren't in this season.</p>
+    </div>
+    {% endif %}
+
+  {% elif active_season.state.value == "ranking" %}
+    {% if god_mode.not_ranked %}
+      <p class="text-sm text-forest-500 mb-3">
+        <strong>{{ god_mode.not_ranked|length }}</strong> user{{ 's' if god_mode.not_ranked|length != 1 }} still need{{ '' if god_mode.not_ranked|length != 1 else 's' }} to rank:
+        {% for u in god_mode.not_ranked %}<span class="font-medium text-forest-700">{{ u.name }}</span>{{ ', ' if not loop.last }}{% endfor %}
+      </p>
+      <form method="post" action="/admin/god-mode/rank" id="gm-ranking-form" class="space-y-3">
+        <select name="user_id" required
+                class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 text-forest-900">
+          {% for u in god_mode.not_ranked %}
+          <option value="{{ u.id }}">{{ u.name }}</option>
+          {% endfor %}
+        </select>
+
+        <p class="text-xs font-semibold text-forest-400 uppercase tracking-wide">⬆ Most wanted</p>
+        <ul id="gm-sortable-list" class="space-y-2">
+          {% for book in god_mode.books %}
+          <li class="flex items-center gap-3 bg-white border border-forest-100 rounded-xl px-4 py-3 shadow-sm cursor-grab active:cursor-grabbing select-none transition-shadow"
+              data-book-id="{{ book.id }}">
+            <span class="gm-rank-number text-forest-400 font-bold text-sm w-6 text-center">{{ loop.index }}</span>
+            <span class="text-forest-300 text-lg gm-drag-handle">☰</span>
+            <div class="flex-1">
+              <span class="font-medium text-forest-800">{{ book.title }}</span>
+              <span class="text-forest-400 text-sm"> — {{ book.author }}</span>
+              <span class="text-forest-300 text-xs ml-1">({{ book.page_count }}pp)</span>
+            </div>
+            <div class="flex flex-col gap-1">
+              <button type="button" class="gm-move-up text-forest-300 hover:text-forest-600 text-xs leading-none" title="Move up">▲</button>
+              <button type="button" class="gm-move-down text-forest-300 hover:text-forest-600 text-xs leading-none" title="Move down">▼</button>
+            </div>
+            <input type="hidden" name="rank_{{ book.id }}" class="gm-rank-input" value="" />
+          </li>
+          {% endfor %}
+        </ul>
+        <p class="text-xs font-semibold text-forest-400 uppercase tracking-wide">⬇ Least wanted</p>
+
+        <button type="submit" class="w-full bg-purple-600 text-white py-2 rounded-lg font-semibold hover:bg-purple-500 transition">
+          Submit Ranking on Behalf of User
+        </button>
+      </form>
+
+      <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+      <script>
+      (function() {
+        const list = document.getElementById('gm-sortable-list');
+        const form = document.getElementById('gm-ranking-form');
+
+        function updateRanks() {
+          list.querySelectorAll('li').forEach((item, idx) => {
+            item.querySelector('.gm-rank-number').textContent = idx + 1;
+            item.querySelector('.gm-move-up').classList.toggle('invisible', idx === 0);
+            item.querySelector('.gm-move-down').classList.toggle('invisible', idx === list.children.length - 1);
+          });
+        }
+
+        Sortable.create(list, {
+          animation: 150,
+          ghostClass: 'sortable-ghost',
+          onEnd: updateRanks,
+        });
+
+        list.addEventListener('click', function(e) {
+          const btn = e.target.closest('.gm-move-up, .gm-move-down');
+          if (!btn) return;
+          const li = btn.closest('li');
+          if (btn.classList.contains('gm-move-up') && li.previousElementSibling) {
+            list.insertBefore(li, li.previousElementSibling);
+          } else if (btn.classList.contains('gm-move-down') && li.nextElementSibling) {
+            list.insertBefore(li.nextElementSibling, li);
+          }
+          updateRanks();
+        });
+
+        form.addEventListener('submit', function() {
+          list.querySelectorAll('li').forEach((item, idx) => {
+            item.querySelector('.gm-rank-input').value = idx + 1;
+          });
+        });
+
+        updateRanks();
+      })();
+      </script>
+    {% else %}
+      <p class="text-sm text-green-600 font-medium">All participants have ranked.</p>
+    {% endif %}
+
+  {% elif active_season.state.value == "bracket" %}
+    {% if god_mode.not_voted %}
+      <p class="text-sm text-forest-500 mb-3">
+        Round {{ god_mode.current_round }} —
+        <strong>{{ god_mode.not_voted|length }}</strong> user{{ 's' if god_mode.not_voted|length != 1 }} still need{{ '' if god_mode.not_voted|length != 1 else 's' }} to vote:
+        {% for u in god_mode.not_voted %}<span class="font-medium text-forest-700">{{ u.name }}</span>{{ ', ' if not loop.last }}{% endfor %}
+      </p>
+
+      <div class="space-y-3">
+        <select id="gm-bracket-user" class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 text-forest-900">
+          {% for u in god_mode.not_voted %}
+          <option value="{{ u.id }}">{{ u.name }}</option>
+          {% endfor %}
+        </select>
+
+        {% for m in god_mode.matchups %}
+          {% if m.book_a_id != m.book_b_id %}
+          <div class="flex items-center gap-3 bg-forest-50 rounded-xl p-3">
+            <form method="post" action="/admin/god-mode/bracket-vote" class="gm-bracket-form flex-1">
+              <input type="hidden" name="user_id" class="gm-bracket-user-input" value="{{ god_mode.not_voted[0].id }}" />
+              <input type="hidden" name="matchup_id" value="{{ m.id }}" />
+              <input type="hidden" name="book_id" value="{{ m.book_a_id }}" />
+              <button class="w-full text-left px-3 py-2 rounded-lg bg-white border border-forest-200 hover:border-purple-400 hover:bg-purple-50 transition text-sm">
+                <span class="font-medium text-forest-800">{{ m.book_a.title }}</span>
+                <span class="text-forest-400 text-xs"> — {{ m.book_a.author }}</span>
+              </button>
+            </form>
+            <span class="text-forest-300 font-bold text-xs">vs</span>
+            <form method="post" action="/admin/god-mode/bracket-vote" class="gm-bracket-form flex-1">
+              <input type="hidden" name="user_id" class="gm-bracket-user-input" value="{{ god_mode.not_voted[0].id }}" />
+              <input type="hidden" name="matchup_id" value="{{ m.id }}" />
+              <input type="hidden" name="book_id" value="{{ m.book_b_id }}" />
+              <button class="w-full text-left px-3 py-2 rounded-lg bg-white border border-forest-200 hover:border-purple-400 hover:bg-purple-50 transition text-sm">
+                <span class="font-medium text-forest-800">{{ m.book_b.title }}</span>
+                <span class="text-forest-400 text-xs"> — {{ m.book_b.author }}</span>
+              </button>
+            </form>
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      <script>
+      (function() {
+        const userSelect = document.getElementById('gm-bracket-user');
+        const inputs = document.querySelectorAll('.gm-bracket-user-input');
+        userSelect.addEventListener('change', function() {
+          inputs.forEach(inp => inp.value = this.value);
+        });
+      })();
+      </script>
+    {% else %}
+      <p class="text-sm text-green-600 font-medium">All participants have voted this round.</p>
+    {% endif %}
+  {% endif %}
+</section>
+{% endif %}
+
 <!-- Start new season -->
 <section class="mb-8 bg-white border border-forest-100 rounded-xl p-5 shadow-sm">
   <h2 class="font-semibold text-forest-600 mb-3">Start a New Season</h2>

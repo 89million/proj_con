@@ -1,9 +1,11 @@
 {% if waiting_on %}
 <div class="mt-4 p-3 bg-sound-50 border border-sound-100 rounded-lg text-sm text-sound-500">
-  <span class="font-semibold">Still waiting on:</span>
-  {% for u in waiting_on %}
-    <span class="inline-block bg-sound-100 text-sound-500 rounded px-2 py-0.5 mx-1 font-medium">{{ u.name }}</span>
-  {% endfor %}
+  <div class="flex flex-wrap items-center gap-1.5">
+    <span class="font-semibold mr-1">Still waiting on:</span>
+    {% for u in waiting_on %}
+      <span class="bg-sound-100 text-sound-500 rounded px-2 py-0.5 font-medium whitespace-nowrap">{{ u.name }}</span>
+    {% endfor %}
+  </div>
 </div>
 {% else %}
 <div class="mt-4 p-3 bg-forest-50 border border-forest-200 rounded-lg text-sm text-forest-600 font-semibold">

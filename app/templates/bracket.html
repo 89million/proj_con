@@ -14,22 +14,217 @@
   {% include "partials/waiting_on.html" %}
 </div>
 
-<!-- Seed reference -->
-<details class="mt-4 mb-6">
-  <summary class="cursor-pointer text-sm text-sound-400 font-medium">Show seeds (Borda count results)</summary>
-  <ol class="mt-2 list-none space-y-1 text-sm pl-2">
-    {% for seed in seeds %}
-    <li class="flex gap-2">
-      <span class="w-6 text-right font-bold text-forest-600">#{{ seed.seed }}</span>
-      <span class="font-medium text-forest-800">{{ seed.book.title }}</span>
-      <span class="text-forest-400">— {{ seed.book.author }}</span>
-    </li>
-    {% endfor %}
-  </ol>
+<!-- Mini bracket overview -->
+<details class="mt-4 mb-6" id="bracket-overview-toggle">
+  <summary class="cursor-pointer text-sm text-sound-400 font-medium">Show bracket overview</summary>
+  <div class="mt-3 overflow-x-auto">
+    <div id="bracket-overview" class="relative" style="min-height: 100px;"></div>
+  </div>
 </details>
 
+
+<script>
+(function() {
+  // Matchup data from DB
+  const matchups = [
+    {% for m in matchups %}
+    {
+      id: {{ m.id }},
+      round: {{ m.round }},
+      position: {{ m.position }},
+      bookA: { id: {{ m.book_a_id }}, title: {{ m.book_a.title | tojson }} },
+      bookB: { id: {{ m.book_b_id }}, title: {{ m.book_b.title | tojson }} },
+      winnerId: {{ m.winner_id or 'null' }},
+      isBye: {{ 'true' if m.book_a_id == m.book_b_id else 'false' }},
+    },
+    {% endfor %}
+  ];
+
+  const seedMap = {
+    {% for s in seeds %}
+    {{ s.book_id }}: {{ s.seed }},
+    {% endfor %}
+  };
+
+  const totalRounds = {{ total_rounds }};
+
+  const container = document.getElementById('bracket-overview');
+  if (!container || matchups.length === 0) return;
+
+  // Layout constants
+  const SLOT_H = 28;
+  const SLOT_W = 140;
+  const COL_GAP = 40;
+  const ROW_GAP = 6;
+  const CONNECTOR_W = 20;
+
+  // Index real matchups by "round-position"
+  const matchupIndex = {};
+  matchups.forEach(m => { matchupIndex[m.round + '-' + m.position] = m; });
+
+  // Compute the full bracket skeleton from round 1
+  // Round 1 count is known (all matchups including byes exist in DB)
+  const round1 = matchups.filter(m => m.round === 1).sort((a, b) => a.position - b.position);
+  const round1Count = round1.length;
+
+  // Build expected matchup count per round: round1Count, round1Count/2, ...
+  const expectedCounts = {};
+  for (let r = 1; r <= totalRounds; r++) {
+    expectedCounts[r] = Math.ceil(round1Count / Math.pow(2, r - 1));
+  }
+
+  // Compute slot positions for the full skeleton
+  const slotPositions = {}; // "round-position-slot" -> {x, y}
+
+  // Place round 1
+  let y = 0;
+  for (let p = 1; p <= round1Count; p++) {
+    slotPositions['1-' + p + '-0'] = { x: 0, y: y };
+    slotPositions['1-' + p + '-1'] = { x: 0, y: y + SLOT_H };
+    y += SLOT_H * 2 + ROW_GAP;
+  }
+
+  // Place subsequent rounds — center between feeder pairs
+  for (let r = 2; r <= totalRounds; r++) {
+    const count = expectedCounts[r];
+    const x = (r - 1) * (SLOT_W + COL_GAP + CONNECTOR_W);
+
+    for (let i = 0; i < count; i++) {
+      const pos = i + 1;
+      // Feeder positions from previous round
+      const f1Pos = i * 2 + 1;
+      const f2Pos = i * 2 + 2;
+      const f1Top = slotPositions[(r-1) + '-' + f1Pos + '-0'];
+      const f2Bot = slotPositions[(r-1) + '-' + f2Pos + '-1'];
+
+      let midY;
+      if (f1Top && f2Bot) {
+        midY = (f1Top.y + f2Bot.y + SLOT_H) / 2 - SLOT_H;
+      } else if (f1Top) {
+        midY = f1Top.y;
+      } else {
+        midY = i * (SLOT_H * 2 + ROW_GAP);
+      }
+
+      slotPositions[r + '-' + pos + '-0'] = { x: x, y: midY };
+      slotPositions[r + '-' + pos + '-1'] = { x: x, y: midY + SLOT_H };
+    }
+  }
+
+  // Compute total dimensions
+  let maxX = 0, maxY = 0;
+  Object.values(slotPositions).forEach(p => {
+    if (p.x + SLOT_W > maxX) maxX = p.x + SLOT_W;
+    if (p.y + SLOT_H > maxY) maxY = p.y + SLOT_H;
+  });
+  container.style.width = maxX + 'px';
+  container.style.height = (maxY + 10) + 'px';
+
+  // Helper: truncate title
+  function truncate(str, max) {
+    return str.length > max ? str.substring(0, max - 1) + '…' : str;
+  }
+
+  // Render a single slot
+  function renderSlot(bookId, title, x, y, style) {
+    const div = document.createElement('div');
+    div.style.cssText = 'position:absolute;left:' + x + 'px;top:' + y + 'px;width:' + SLOT_W + 'px;height:' + (SLOT_H - 2) + 'px;';
+    div.className = 'flex items-center px-2 text-xs rounded border overflow-hidden whitespace-nowrap ';
+
+    if (style === 'bye') {
+      div.className += 'border-forest-100 bg-forest-50/50 text-forest-300';
+    } else if (style === 'winner') {
+      div.className += 'border-forest-400 bg-forest-100 text-forest-700 font-semibold';
+    } else if (style === 'loser') {
+      div.className += 'border-forest-100 bg-white text-forest-200 line-through';
+    } else if (style === 'tbd') {
+      div.className += 'border-dashed border-forest-100 bg-forest-50/30 text-forest-200 italic';
+    } else {
+      div.className += 'border-forest-200 bg-white text-forest-700';
+    }
+
+    if (style === 'tbd') {
+      div.textContent = 'TBD';
+    } else {
+      const seed = seedMap[bookId];
+      div.textContent = (seed ? '#' + seed + ' ' : '') + truncate(title, 16);
+      div.title = title;
+    }
+    container.appendChild(div);
+  }
+
+  // SVG overlay for connector lines
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.style.cssText = 'position:absolute;top:0;left:0;width:' + maxX + 'px;height:' + (maxY + 10) + 'px;pointer-events:none;';
+  container.appendChild(svg);
+
+  function drawConnector(x1, y1, x2, y2, dashed) {
+    const midX = (x1 + x2) / 2;
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M' + x1 + ',' + y1 + ' H' + midX + ' V' + y2 + ' H' + x2);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', dashed ? '#d4e8d0' : '#acd9a4');
+    path.setAttribute('stroke-width', '1.5');
+    if (dashed) path.setAttribute('stroke-dasharray', '4 3');
+    svg.appendChild(path);
+  }
+
+  // Render the full skeleton
+  for (let r = 1; r <= totalRounds; r++) {
+    const count = expectedCounts[r];
+    for (let i = 0; i < count; i++) {
+      const pos = i + 1;
+      const posA = slotPositions[r + '-' + pos + '-0'];
+      const posB = slotPositions[r + '-' + pos + '-1'];
+      const m = matchupIndex[r + '-' + pos];
+
+      if (m) {
+        // Real matchup exists in DB
+        if (m.isBye) {
+          renderSlot(m.bookA.id, m.bookA.title, posA.x, posA.y, 'bye');
+          // Render empty bottom slot for visual pairing
+          renderSlot(null, '', posB.x, posB.y, 'bye');
+        } else {
+          const aWon = m.winnerId === m.bookA.id;
+          const bWon = m.winnerId === m.bookB.id;
+          renderSlot(m.bookA.id, m.bookA.title, posA.x, posA.y, aWon ? 'winner' : bWon ? 'loser' : 'active');
+          renderSlot(m.bookB.id, m.bookB.title, posB.x, posB.y, bWon ? 'winner' : aWon ? 'loser' : 'active');
+        }
+      } else {
+        // Future matchup — show TBD placeholders
+        renderSlot(null, '', posA.x, posA.y, 'tbd');
+        renderSlot(null, '', posB.x, posB.y, 'tbd');
+      }
+
+      // Draw connector lines to next round (always, for the skeleton)
+      if (r < totalRounds) {
+        const nextPos = Math.ceil(pos / 2);
+        const isTopFeeder = (pos - 1) % 2 === 0;
+        const nextSlot = isTopFeeder ? 0 : 1;
+        const target = slotPositions['' + (r + 1) + '-' + nextPos + '-' + nextSlot];
+
+        if (target) {
+          // If matchup has a winner, draw solid line from winner slot
+          // Otherwise draw dashed line from midpoint of the pair
+          if (m && m.winnerId) {
+            const winnerIsA = m.winnerId === m.bookA.id;
+            const fromSlot = winnerIsA ? posA : posB;
+            drawConnector(fromSlot.x + SLOT_W, fromSlot.y + SLOT_H / 2, target.x, target.y + SLOT_H / 2, false);
+          } else {
+            // Dashed line from midpoint of pair to next slot
+            const midY = posA.y + SLOT_H;
+            drawConnector(posA.x + SLOT_W, midY, target.x, target.y + SLOT_H / 2, true);
+          }
+        }
+      }
+    }
+  }
+})();
+</script>
+
 <!-- Rounds -->
-{% for round_num in [1, 2, 3, 4, 5] %}
+{% set ns = namespace(has_votable=false) %}
+{% for round_num in range(total_rounds, 0, -1) %}
   {% set round_matchups = matchups | selectattr('round', 'equalto', round_num) | list %}
   {% if round_matchups %}
   <section class="mb-8">
@@ -39,6 +234,7 @@
         <span class="text-xs text-forest-300 ml-2">✓ complete</span>
       {% elif round_num == current_round %}
         <span class="text-xs text-sound-400 ml-2">← voting now</span>
+        <span class="text-xs text-forest-400 ml-2">· Tap to pick your favorite</span>
       {% else %}
         <span class="text-xs text-forest-200 ml-2">upcoming</span>
       {% endif %}
@@ -46,57 +242,67 @@
 
     <div class="space-y-3">
       {% for matchup in round_matchups %}
-      {% if matchup.book_a_id == matchup.book_b_id %}{% else %}
-      <div class="bg-white border border-forest-100 rounded-xl p-4 shadow-sm">
-        {% set user_pick = user_votes.get(matchup.id) %}
-        {% set is_current = round_num == current_round %}
-        {% set can_vote = is_current and not user_pick and not matchup.winner_id %}
+      {% if matchup.book_a_id != matchup.book_b_id %}
+      {% set user_pick = user_votes.get(matchup.id) %}
+      {% set is_current = round_num == current_round %}
+      {% set can_vote = is_current and not user_pick and not matchup.winner_id %}
+      {% if can_vote %}{% set ns.has_votable = true %}{% endif %}
 
-        <!-- Book A -->
-        <div class="flex items-center justify-between gap-3 mb-2">
-          <div class="flex-1">
-            <span class="font-semibold {% if matchup.winner_id == matchup.book_a_id %}text-forest-600{% elif matchup.winner_id and matchup.winner_id != matchup.book_a_id %}text-forest-200 line-through{% else %}text-forest-800{% endif %}">
-              {{ matchup.book_a.title }}
-            </span>
-            <span class="text-forest-300 text-xs"> — {{ matchup.book_a.author }}</span>
-            {% if matchup.book_a.description %}
-            <p class="text-forest-400 text-xs italic mt-0.5">{{ matchup.book_a.description }}</p>
+      <div class="bg-white border border-forest-100 rounded-xl p-4 shadow-sm matchup-card"
+           data-matchup-id="{{ matchup.id }}"
+           data-can-vote="{{ 'true' if can_vote else 'false' }}">
+
+        <!-- Side-by-side on desktop, stacked on mobile -->
+        <div class="flex flex-col md:flex-row md:items-stretch gap-2 md:gap-0">
+
+          <!-- Book A -->
+          <div class="flex-1 flex items-center gap-3 book-option {% if can_vote %}cursor-pointer border border-forest-200 bg-forest-50/50 rounded-lg px-3 py-3 hover:border-forest-400 hover:bg-forest-50 transition active:bg-forest-100{% else %}px-1 py-2{% endif %}"
+               {% if can_vote %}data-matchup-id="{{ matchup.id }}" data-book-id="{{ matchup.book_a_id }}"{% endif %}>
+            <div class="flex-1">
+              {% if seed_map %}
+              <span class="text-xs font-bold text-forest-400 mr-1">#{{ seed_map.get(matchup.book_a_id, '?') }}</span>
+              {% endif %}
+              <span class="book-title font-semibold {% if matchup.winner_id == matchup.book_a_id %}text-forest-600{% elif matchup.winner_id and matchup.winner_id != matchup.book_a_id %}text-forest-200 line-through{% else %}text-forest-800{% endif %}">
+                {{ matchup.book_a.title }}
+              </span>
+              <span class="text-forest-300 text-xs"> — {{ matchup.book_a.author }}</span>
+              {% if matchup.book_a.description %}
+              <p class="text-forest-400 text-xs italic mt-0.5">{{ matchup.book_a.description }}</p>
+              {% endif %}
+            </div>
+            {% if user_pick == matchup.book_a_id %}
+              <span class="text-xs text-sound-400 font-semibold whitespace-nowrap">✓ your pick</span>
             {% endif %}
           </div>
-          {% if can_vote %}
-            <form method="post" action="/bracket/vote/{{ matchup.id }}">
-              <input type="hidden" name="book_id" value="{{ matchup.book_a_id }}" />
-              <button class="px-3 py-1 bg-forest-600 text-white text-sm rounded hover:bg-forest-500 transition font-medium">Vote</button>
-            </form>
-          {% elif user_pick == matchup.book_a_id %}
-            <span class="text-xs text-sound-400 font-semibold">✓ your pick</span>
-          {% endif %}
-        </div>
 
-        <div class="text-center text-forest-200 text-xs font-bold my-1">vs</div>
+          <!-- VS divider -->
+          <div class="flex items-center justify-center md:px-4 py-1 md:py-0">
+            <span class="text-forest-200 text-xs font-bold">vs</span>
+          </div>
 
-        <!-- Book B -->
-        <div class="flex items-center justify-between gap-3 mt-2">
-          <div class="flex-1">
-            <span class="font-semibold {% if matchup.winner_id == matchup.book_b_id %}text-forest-600{% elif matchup.winner_id and matchup.winner_id != matchup.book_b_id %}text-forest-200 line-through{% else %}text-forest-800{% endif %}">
-              {{ matchup.book_b.title }}
-            </span>
-            <span class="text-forest-300 text-xs"> — {{ matchup.book_b.author }}</span>
-            {% if matchup.book_b.description %}
-            <p class="text-forest-400 text-xs italic mt-0.5">{{ matchup.book_b.description }}</p>
+          <!-- Book B -->
+          <div class="flex-1 flex items-center gap-3 book-option {% if can_vote %}cursor-pointer border border-forest-200 bg-forest-50/50 rounded-lg px-3 py-3 hover:border-forest-400 hover:bg-forest-50 transition active:bg-forest-100{% endif %} {% if not can_vote %}px-1 py-2{% endif %}"
+               {% if can_vote %}data-matchup-id="{{ matchup.id }}" data-book-id="{{ matchup.book_b_id }}"{% endif %}>
+            <div class="flex-1">
+              {% if seed_map %}
+              <span class="text-xs font-bold text-forest-400 mr-1">#{{ seed_map.get(matchup.book_b_id, '?') }}</span>
+              {% endif %}
+              <span class="book-title font-semibold {% if matchup.winner_id == matchup.book_b_id %}text-forest-600{% elif matchup.winner_id and matchup.winner_id != matchup.book_b_id %}text-forest-200 line-through{% else %}text-forest-800{% endif %}">
+                {{ matchup.book_b.title }}
+              </span>
+              <span class="text-forest-300 text-xs"> — {{ matchup.book_b.author }}</span>
+              {% if matchup.book_b.description %}
+              <p class="text-forest-400 text-xs italic mt-0.5">{{ matchup.book_b.description }}</p>
+              {% endif %}
+            </div>
+            {% if user_pick == matchup.book_b_id %}
+              <span class="text-xs text-sound-400 font-semibold whitespace-nowrap">✓ your pick</span>
             {% endif %}
           </div>
-          {% if can_vote %}
-            <form method="post" action="/bracket/vote/{{ matchup.id }}">
-              <input type="hidden" name="book_id" value="{{ matchup.book_b_id }}" />
-              <button class="px-3 py-1 bg-forest-600 text-white text-sm rounded hover:bg-forest-500 transition font-medium">Vote</button>
-            </form>
-          {% elif user_pick == matchup.book_b_id %}
-            <span class="text-xs text-sound-400 font-semibold">✓ your pick</span>
-          {% endif %}
+
         </div>
 
-        <!-- Vote tally -->
+        <!-- Vote tally (shown after votes are locked in) -->
         {% if matchup.winner_id or user_pick %}
           {% set a_votes = matchup.votes | selectattr('book_id', 'equalto', matchup.book_a_id) | list | length %}
           {% set b_votes = matchup.votes | selectattr('book_id', 'equalto', matchup.book_b_id) | list | length %}
@@ -125,5 +331,92 @@
   </section>
   {% endif %}
 {% endfor %}
+
+<!-- Batch submit form + button (only when there are votable matchups) -->
+{% if ns.has_votable %}
+<form id="bracket-vote-form" method="post" action="/bracket/vote-all">
+  <!-- Hidden inputs populated by JS -->
+</form>
+
+<div class="sticky bottom-4 flex justify-center mt-4">
+  <button id="submit-votes-btn" type="button" disabled
+          class="bg-forest-600 text-white px-6 py-3 rounded-xl font-semibold shadow-lg hover:bg-forest-500 transition disabled:opacity-40 disabled:cursor-not-allowed">
+    Lock In Votes (<span id="vote-count">0</span>/<span id="vote-total">0</span>)
+  </button>
+</div>
+
+<script>
+(function() {
+  const form = document.getElementById('bracket-vote-form');
+  const submitBtn = document.getElementById('submit-votes-btn');
+  const voteCountEl = document.getElementById('vote-count');
+  const voteTotalEl = document.getElementById('vote-total');
+
+  // Track selections: {matchup_id: book_id}
+  const selections = {};
+
+  // Count votable matchups
+  const votableCards = document.querySelectorAll('.matchup-card[data-can-vote="true"]');
+  const totalVotable = votableCards.length;
+  voteTotalEl.textContent = totalVotable;
+
+  function updateUI() {
+    const count = Object.keys(selections).length;
+    voteCountEl.textContent = count;
+    submitBtn.disabled = count === 0;
+
+    // Update card styling
+    votableCards.forEach(card => {
+      const mid = card.dataset.matchupId;
+      const selectedBook = selections[mid];
+      card.querySelectorAll('.book-option[data-book-id]').forEach(opt => {
+        const bid = opt.dataset.bookId;
+        if (selectedBook === bid) {
+          opt.classList.add('bg-forest-100', 'ring-2', 'ring-forest-400', 'rounded-lg');
+        } else if (selectedBook) {
+          opt.classList.remove('bg-forest-100', 'ring-2', 'ring-forest-400', 'rounded-lg');
+          opt.classList.add('opacity-50');
+        } else {
+          opt.classList.remove('bg-forest-100', 'ring-2', 'ring-forest-400', 'rounded-lg', 'opacity-50');
+        }
+      });
+    });
+
+    // Update hidden form inputs
+    form.innerHTML = '';
+    for (const [mid, bid] of Object.entries(selections)) {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = 'vote_' + mid;
+      input.value = bid;
+      form.appendChild(input);
+    }
+  }
+
+  // Click handler for book options
+  document.addEventListener('click', function(e) {
+    const opt = e.target.closest('.book-option[data-book-id]');
+    if (!opt) return;
+    const mid = opt.dataset.matchupId;
+    const bid = opt.dataset.bookId;
+
+    // Toggle: click same selection to deselect
+    if (selections[mid] === bid) {
+      delete selections[mid];
+    } else {
+      selections[mid] = bid;
+    }
+    updateUI();
+  });
+
+  submitBtn.addEventListener('click', function() {
+    if (Object.keys(selections).length === 0) return;
+    form.submit();
+  });
+
+  updateUI();
+})();
+</script>
+{% endif %}
 
 {% endblock %}

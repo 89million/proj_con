@@ -27,13 +27,21 @@ from app.models import (
 
 
 async def get_active_season(db: AsyncSession) -> Season | None:
-    """Return the most recent non-complete season, or None."""
+    """Return the most recent non-complete season, or the most recently
+    created season overall if everything is complete.  This keeps the
+    just-finished season visible until a new one is started."""
     result = await db.execute(
         select(Season)
         .where(Season.state != SeasonState.complete)
         .order_by(Season.created_at.desc())
         .limit(1)
     )
+    season = result.scalar_one_or_none()
+    if season is not None:
+        return season
+
+    # All seasons are complete — return the most recently created one
+    result = await db.execute(select(Season).order_by(Season.created_at.desc()).limit(1))
     return result.scalar_one_or_none()
 
 
@@ -466,6 +474,17 @@ async def get_current_bracket_round(db: AsyncSession, season_id: int) -> int:
                 BracketMatchup.season_id == season_id,
                 BracketMatchup.winner_id.is_(None),
             )
+        )
+    )
+    val = result.scalar_one_or_none()
+    return val or 0
+
+
+async def get_latest_bracket_round(db: AsyncSession, season_id: int) -> int:
+    """Return the highest round number among all matchups for this season."""
+    result = await db.execute(
+        select(func.max(BracketMatchup.round)).where(
+            BracketMatchup.season_id == season_id,
         )
     )
     val = result.scalar_one_or_none()

@@ -40,14 +40,27 @@
     </div>
   {% endif %}
 
+  <style>
+    .sortable-ghost {
+      opacity: 0.4;
+      background: #e8f5e9;
+      border: 2px dashed #4caf50;
+    }
+    .sortable-chosen {
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+      transform: scale(1.02);
+    }
+  </style>
+
   <form method="post" action="/ranking" id="ranking-form" class="mt-6">
     <p class="text-xs font-semibold text-forest-400 uppercase tracking-wide mb-1">⬆ Most wanted</p>
     <ul id="sortable-list" class="space-y-2 mb-1">
       {% for book in books %}
       <li
-        class="flex items-center gap-3 bg-white border border-forest-100 rounded-xl px-4 py-3 shadow-sm cursor-grab active:cursor-grabbing select-none"
+        class="flex items-center gap-3 bg-white border border-forest-100 rounded-xl px-4 py-3 shadow-sm cursor-grab active:cursor-grabbing select-none transition-shadow"
         data-book-id="{{ book.id }}"
       >
+        <span class="rank-number text-forest-400 font-bold text-sm w-6 text-center">{{ loop.index }}</span>
         <span class="text-forest-300 text-lg drag-handle">☰</span>
         <div class="flex-1">
           <span class="font-medium text-forest-800">{{ book.title }}</span>
@@ -56,6 +69,10 @@
           {% if book.description %}
           <p class="text-forest-400 text-xs italic mt-0.5">{{ book.description }}</p>
           {% endif %}
+        </div>
+        <div class="flex flex-col gap-1">
+          <button type="button" class="move-up text-forest-300 hover:text-forest-600 text-xs leading-none" title="Move up">▲</button>
+          <button type="button" class="move-down text-forest-300 hover:text-forest-600 text-xs leading-none" title="Move down">▼</button>
         </div>
         <input type="hidden" name="rank_{{ book.id }}" class="rank-input" value="" />
       </li>
@@ -67,23 +84,89 @@
     </button>
   </form>
 
+  <!-- Confirmation modal -->
+  <div id="confirm-modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+    <div class="bg-white rounded-xl shadow-xl max-w-sm w-full p-6">
+      <h3 class="text-lg font-bold text-forest-700 mb-3">Confirm Your Ranking</h3>
+      <p class="text-forest-500 text-sm mb-3">Once submitted, you can't change your ranking.</p>
+      <ol id="confirm-list" class="list-decimal list-inside space-y-1 mb-5 text-sm text-forest-800"></ol>
+      <div class="flex gap-3">
+        <button id="confirm-cancel" type="button" class="flex-1 py-2 rounded-lg border border-forest-300 text-forest-600 font-semibold hover:bg-forest-50 transition">
+          Go Back
+        </button>
+        <button id="confirm-submit" type="button" class="flex-1 py-2 rounded-lg bg-forest-600 text-white font-semibold hover:bg-forest-500 transition">
+          Lock It In
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <script>
     const list = document.getElementById('sortable-list');
+    const form = document.getElementById('ranking-form');
+    const modal = document.getElementById('confirm-modal');
+    const confirmList = document.getElementById('confirm-list');
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+    function updateRankNumbers() {
+      list.querySelectorAll('li').forEach((item, idx) => {
+        item.querySelector('.rank-number').textContent = idx + 1;
+        const upBtn = item.querySelector('.move-up');
+        const downBtn = item.querySelector('.move-down');
+        upBtn.classList.toggle('invisible', idx === 0);
+        downBtn.classList.toggle('invisible', idx === list.children.length - 1);
+      });
+    }
+
     Sortable.create(list, {
       animation: 150,
       ghostClass: 'sortable-ghost',
-      handle: '.drag-handle',
+      chosenClass: 'sortable-chosen',
+      delay: isTouchDevice ? 150 : 0,
+      delayOnTouchOnly: true,
+      touchStartThreshold: 5,
+      onEnd: updateRankNumbers,
     });
 
-    document.getElementById('ranking-form').addEventListener('submit', function () {
-      const items = list.querySelectorAll('li');
-      items.forEach((item, idx) => {
-        const bookId = item.dataset.bookId;
-        const input = item.querySelector('.rank-input');
-        input.value = idx + 1;
-      });
+    list.addEventListener('click', function (e) {
+      const btn = e.target.closest('.move-up, .move-down');
+      if (!btn) return;
+      const li = btn.closest('li');
+      if (btn.classList.contains('move-up') && li.previousElementSibling) {
+        list.insertBefore(li, li.previousElementSibling);
+      } else if (btn.classList.contains('move-down') && li.nextElementSibling) {
+        list.insertBefore(li.nextElementSibling, li);
+      }
+      updateRankNumbers();
     });
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      confirmList.innerHTML = '';
+      list.querySelectorAll('li').forEach((item) => {
+        const title = item.querySelector('.text-forest-800').textContent;
+        const li = document.createElement('li');
+        li.textContent = title;
+        confirmList.appendChild(li);
+      });
+      modal.classList.remove('hidden');
+    });
+
+    document.getElementById('confirm-cancel').addEventListener('click', function () {
+      modal.classList.add('hidden');
+    });
+
+    document.getElementById('confirm-submit').addEventListener('click', function () {
+      list.querySelectorAll('li').forEach((item, idx) => {
+        item.querySelector('.rank-input').value = idx + 1;
+      });
+      modal.classList.add('hidden');
+      form.removeEventListener('submit', arguments.callee);
+      form.submit();
+    });
+
+    updateRankNumbers();
   </script>
 {% endif %}
 

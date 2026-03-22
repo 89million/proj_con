@@ -1,6 +1,7 @@
 """FastAPI application — all routes."""
 
 import html as _html
+import math
 
 import httpx
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
@@ -34,6 +35,13 @@ templates.env.filters["unescape"] = _html.unescape
 # ---------------------------------------------------------------------------
 
 _ROUND_LABELS = ["Final", "Semifinals", "Quarterfinals", "Round of 16", "Round of 32"]
+
+
+def _total_rounds_for_books(n_books: int) -> int:
+    """Number of bracket rounds needed for n_books."""
+    if n_books < 2:
+        return 1
+    return math.ceil(math.log2(n_books))
 
 
 async def is_login_allowed(db: AsyncSession, email: str) -> bool:
@@ -169,11 +177,8 @@ async def root(
             return RedirectResponse("/ranking", status_code=302)
         elif season.state == SeasonState.bracket:
             return RedirectResponse("/bracket", status_code=302)
-
-    # No active season — redirect to winner page if any season has completed
-    complete = await crud.get_most_recent_complete_season(db)
-    if complete is not None:
-        return RedirectResponse("/complete", status_code=302)
+        elif season.state == SeasonState.complete:
+            return RedirectResponse("/complete", status_code=302)
 
     # Truly no history — show the "no season" page (admin sees start button)
     return templates.TemplateResponse("no_season.html", {"request": request, "user": user})
@@ -438,6 +443,10 @@ async def bracket_page(
     if season is None or season.state != SeasonState.bracket:
         return RedirectResponse("/", status_code=302)
 
+    # Self-heal: if all matchups are resolved but season isn't complete,
+    # rebuild the missing next round.
+    await state.maybe_advance_bracket_round(db, season)
+
     current_round = await crud.get_current_bracket_round(db, season.id)
     all_matchups = await crud.get_matchups_for_season(db, season.id)
     seeds = await crud.get_seeds_for_season(db, season.id)
@@ -450,8 +459,12 @@ async def bracket_page(
         if vote:
             user_votes[matchup.id] = vote.book_id
 
-    max_round = max((m.round for m in all_matchups), default=1)
-    round_names = build_round_names(max_round)
+    n_books = len(seeds)
+    total_rounds = _total_rounds_for_books(n_books)
+    round_names = build_round_names(total_rounds)
+
+    # Build seed lookup: book_id -> seed number
+    seed_map = {s.book_id: s.seed for s in seeds}
 
     prior_nominations = await crud.get_prior_nomination_counts(db, season.id)
     matchup_tiebreakers = {m.id: matchup_tiebreaker(m, prior_nominations) for m in all_matchups}
@@ -465,9 +478,11 @@ async def bracket_page(
             "matchups": all_matchups,
             "current_round": current_round,
             "seeds": seeds,
+            "seed_map": seed_map,
             "user_votes": user_votes,
             "waiting_on": waiting_on,
             "round_names": round_names,
+            "total_rounds": total_rounds,
             "prior_nominations": prior_nominations,
             "matchup_tiebreakers": matchup_tiebreakers,
         },
@@ -506,6 +521,47 @@ async def bracket_vote(
     await crud.save_bracket_vote(db, user.id, matchup_id, book_id)
     await state.maybe_advance_bracket_round(db, season)
 
+    return RedirectResponse("/bracket", status_code=302)
+
+
+@app.post("/bracket/vote-all", response_class=HTMLResponse)
+async def bracket_vote_all(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    """Submit all bracket votes for the current round at once."""
+    season = await crud.get_active_season(db)
+    if season is None or season.state != SeasonState.bracket:
+        return RedirectResponse("/", status_code=302)
+
+    current_round = await crud.get_current_bracket_round(db, season.id)
+    form_data = await request.form()
+
+    # Collect vote_{matchup_id} = book_id fields
+    for key, value in form_data.items():
+        if not key.startswith("vote_"):
+            continue
+        try:
+            matchup_id = int(key.removeprefix("vote_"))
+            book_id = int(value)
+        except (ValueError, TypeError):
+            continue
+
+        matchup = await crud.get_matchup_by_id(db, matchup_id)
+        if matchup is None or matchup.season_id != season.id:
+            continue
+        if matchup.round != current_round:
+            continue
+        existing = await crud.get_bracket_vote(db, user.id, matchup_id)
+        if existing:
+            continue
+        if book_id not in (matchup.book_a_id, matchup.book_b_id):
+            continue
+
+        await crud.save_bracket_vote(db, user.id, matchup_id, book_id)
+
+    await state.maybe_advance_bracket_round(db, season)
     return RedirectResponse("/bracket", status_code=302)
 
 
@@ -600,12 +656,12 @@ async def history_season_page(
     seeds = await crud.get_seeds_for_season(db, season_id)
     matchups = await crud.get_matchups_for_season(db, season_id)
     winner_book = await crud.get_winner_book_for_season(db, season_id)
-    max_round = max((m.round for m in matchups), default=1)
-    round_names = build_round_names(max_round)
+    n_books = len(books)
+    total_rounds = _total_rounds_for_books(n_books)
+    round_names = build_round_names(total_rounds)
 
     # Borda scores: (N_books - rank) per vote, summed per book
     all_borda_votes = await crud.get_all_borda_votes_for_season(db, season_id)
-    n_books = len(books)
     borda_scores: dict[int, int] = {}
     for vote in all_borda_votes:
         borda_scores[vote.book_id] = borda_scores.get(vote.book_id, 0) + (n_books - vote.rank)
@@ -770,6 +826,24 @@ async def admin_page(
         else []
     )
 
+    # God mode context — state-aware data for admin-on-behalf-of-user actions
+    god_mode: dict = {}
+    if active_season and active_season.state != SeasonState.complete:
+        if active_season.state == SeasonState.submit:
+            god_mode["not_submitted"] = await crud.users_who_havent_submitted(db, active_season.id)
+        elif active_season.state == SeasonState.ranking:
+            god_mode["not_ranked"] = await crud.users_who_havent_ranked(db, active_season.id)
+            god_mode["books"] = await crud.get_books_for_season(db, active_season.id)
+        elif active_season.state == SeasonState.bracket:
+            current_round = await crud.get_current_bracket_round(db, active_season.id)
+            god_mode["not_voted"] = await crud.users_who_havent_voted_round(
+                db, active_season.id, current_round
+            )
+            god_mode["matchups"] = await crud.get_matchups_for_round(
+                db, active_season.id, current_round
+            )
+            god_mode["current_round"] = current_round
+
     return templates.TemplateResponse(
         "admin.html",
         {
@@ -783,8 +857,153 @@ async def admin_page(
             "season_participants": season_participants,
             "season_non_participants": season_non_participants,
             "allowlist_gaps": allowlist_gaps,
+            "god_mode": god_mode,
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# God Mode — admin acts on behalf of any user
+# ---------------------------------------------------------------------------
+
+
+@app.post("/admin/god-mode/submit", response_class=HTMLResponse)
+async def god_mode_submit(
+    user_id: int = Form(...),
+    title: str = Form(...),
+    author: str = Form(...),
+    page_count: int = Form(...),
+    description: str | None = Form(None),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    season = await crud.get_active_season(db)
+    if season is None or season.state != SeasonState.submit:
+        return RedirectResponse("/admin", status_code=302)
+
+    existing = await crud.get_book_submitted_by_user(db, user_id, season.id)
+    if existing:
+        return RedirectResponse("/admin", status_code=302)
+
+    if page_count > season.page_limit:
+        return RedirectResponse("/admin", status_code=302)
+
+    blocked, _ = await crud.is_book_blocked(db, title, author, season.id)
+    if blocked:
+        return RedirectResponse("/admin", status_code=302)
+
+    await crud.create_book(
+        db, title, author, page_count, user_id, season.id, description=description or None
+    )
+    await state.maybe_advance_from_submit(db, season)
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/god-mode/rank", response_class=HTMLResponse)
+async def god_mode_rank(
+    request: Request,
+    user_id: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    season = await crud.get_active_season(db)
+    if season is None or season.state != SeasonState.ranking:
+        return RedirectResponse("/admin", status_code=302)
+
+    existing = await crud.get_borda_votes_for_user(db, user_id, season.id)
+    if existing:
+        return RedirectResponse("/admin", status_code=302)
+
+    form_data = await request.form()
+    books = await crud.get_books_for_season(db, season.id)
+    try:
+        ranked: dict[int, int] = {}
+        for book in books:
+            rank_val = form_data.get(f"rank_{book.id}")
+            if rank_val is None:
+                raise ValueError(f"Missing rank for book {book.id}")
+            ranked[book.id] = int(rank_val)
+    except (ValueError, TypeError):
+        return RedirectResponse("/admin", status_code=302)
+
+    ranks = list(ranked.values())
+    n = len(books)
+    if sorted(ranks) != list(range(1, n + 1)):
+        return RedirectResponse("/admin", status_code=302)
+
+    ordered_ids = [book_id for book_id, _ in sorted(ranked.items(), key=lambda x: x[1])]
+    await crud.save_borda_votes(db, user_id, season.id, ordered_ids)
+    await state.maybe_advance_from_ranking(db, season)
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/god-mode/bracket-vote", response_class=HTMLResponse)
+async def god_mode_bracket_vote(
+    user_id: int = Form(...),
+    matchup_id: int = Form(...),
+    book_id: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    season = await crud.get_active_season(db)
+    if season is None or season.state != SeasonState.bracket:
+        return RedirectResponse("/admin", status_code=302)
+
+    matchup = await crud.get_matchup_by_id(db, matchup_id)
+    if matchup is None or matchup.season_id != season.id:
+        return RedirectResponse("/admin", status_code=302)
+
+    current_round = await crud.get_current_bracket_round(db, season.id)
+    if matchup.round != current_round:
+        return RedirectResponse("/admin", status_code=302)
+
+    existing = await crud.get_bracket_vote(db, user_id, matchup_id)
+    if existing:
+        return RedirectResponse("/admin", status_code=302)
+
+    if book_id not in (matchup.book_a_id, matchup.book_b_id):
+        return RedirectResponse("/admin", status_code=302)
+
+    await crud.save_bracket_vote(db, user_id, matchup_id, book_id)
+    await state.maybe_advance_bracket_round(db, season)
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/god-mode/copy-submissions", response_class=HTMLResponse)
+async def god_mode_copy_submissions(
+    source_season_id: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Copy book submissions from a previous season into the active season."""
+    season = await crud.get_active_season(db)
+    if season is None or season.state != SeasonState.submit:
+        return RedirectResponse("/admin", status_code=302)
+
+    source_books = await crud.get_books_for_season(db, source_season_id)
+    participants = await crud.get_participants_for_season(db, season.id)
+    participant_ids = {u.id for u in participants}
+
+    for book in source_books:
+        if book.submitter_id not in participant_ids:
+            continue
+        existing = await crud.get_book_submitted_by_user(db, book.submitter_id, season.id)
+        if existing:
+            continue
+        if book.page_count > season.page_limit:
+            continue
+        await crud.create_book(
+            db,
+            title=book.title,
+            author=book.author,
+            page_count=book.page_count,
+            submitter_id=book.submitter_id,
+            season_id=season.id,
+            description=book.description,
+        )
+
+    await state.maybe_advance_from_submit(db, season)
+    return RedirectResponse("/admin", status_code=302)
 
 
 @app.post("/admin/season", response_class=HTMLResponse)

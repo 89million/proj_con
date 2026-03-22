@@ -63,7 +63,20 @@ async def maybe_advance_bracket_round(db: AsyncSession, season: Season) -> bool:
 
     current_round = await crud.get_current_bracket_round(db, season.id)
     if current_round == 0:
-        return False
+        # All existing matchups are resolved but season isn't complete —
+        # rebuild the next round from the latest resolved round.
+        latest_round = await crud.get_latest_bracket_round(db, season.id)
+        if latest_round == 0:
+            return False
+        matchups = await crud.get_matchups_for_round(db, season.id, latest_round)
+        all_winner_ids = list(dict.fromkeys(m.winner_id for m in matchups))
+        if len(all_winner_ids) <= 1:
+            return False  # should already be complete
+        next_round_matchups = voting.build_next_round_matchups(
+            season.id, matchups, latest_round + 1
+        )
+        await crud.create_matchups(db, next_round_matchups)
+        return True
 
     matchups = await crud.get_matchups_for_round(db, season.id, current_round)
 

@@ -6,7 +6,7 @@ the HTML body to confirm the right information is shown to users.
 
 import pytest_asyncio
 
-from app.models import Book, BracketMatchup, Season, SeasonState
+from app.models import Book, BracketMatchup, Season, SeasonState, Seed
 
 from .conftest import make_client
 
@@ -76,8 +76,8 @@ async def single_round_bracket(db, active_season, test_user, test_admin):
 
 
 @pytest_asyncio.fixture
-async def two_round_bracket(db, active_season, test_user, test_admin):
-    """Matchups in rounds 1 and 2 (max_round=2 → round 1 labelled 'Semifinals')."""
+async def two_round_bracket(db, active_season, test_user, test_admin, extra_user):
+    """3 books → 2 rounds (ceil(log2(3))=2), so round 1 is labelled 'Semifinals'."""
     book1 = Book(
         title="Semis Book A",
         author="Auth A",
@@ -92,31 +92,50 @@ async def two_round_bracket(db, active_season, test_user, test_admin):
         submitter_id=test_admin.id,
         season_id=active_season.id,
     )
-    db.add_all([book1, book2])
+    book3 = Book(
+        title="Semis Book C",
+        author="Auth C",
+        page_count=200,
+        submitter_id=extra_user.id,
+        season_id=active_season.id,
+    )
+    from app.models import SeasonParticipant
+
+    # Enroll extra_user as participant
+    db.add(SeasonParticipant(season_id=active_season.id, user_id=extra_user.id))
+    db.add_all([book1, book2, book3])
     active_season.state = SeasonState.bracket
     await db.flush()
-    # Real round-1 matchup (will render)
-    matchup_r1 = BracketMatchup(
+    # Seeds (needed for seed_map in template)
+    db.add_all(
+        [
+            Seed(season_id=active_season.id, book_id=book1.id, seed=1),
+            Seed(season_id=active_season.id, book_id=book2.id, seed=2),
+            Seed(season_id=active_season.id, book_id=book3.id, seed=3),
+        ]
+    )
+    # Round 1: book1 gets a bye, book2 vs book3
+    matchup_bye = BracketMatchup(
         season_id=active_season.id,
         round=1,
         position=1,
         book_a_id=book1.id,
-        book_b_id=book2.id,
-    )
-    # Placeholder round-2 matchup (same book on both sides → skipped in render,
-    # but pushes max_round to 2 so round 1 becomes "Semifinals")
-    matchup_r2 = BracketMatchup(
-        season_id=active_season.id,
-        round=2,
-        position=1,
-        book_a_id=book1.id,
         book_b_id=book1.id,
+        winner_id=book1.id,
     )
-    db.add_all([matchup_r1, matchup_r2])
+    matchup_r1 = BracketMatchup(
+        season_id=active_season.id,
+        round=1,
+        position=2,
+        book_a_id=book2.id,
+        book_b_id=book3.id,
+    )
+    db.add_all([matchup_bye, matchup_r1])
     await db.commit()
     await db.refresh(book1)
     await db.refresh(book2)
-    return active_season, book1, book2
+    await db.refresh(book3)
+    return active_season, book1, book2, book3
 
 
 @pytest_asyncio.fixture

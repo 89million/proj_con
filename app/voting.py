@@ -48,6 +48,26 @@ def _next_power_of_2(n: int) -> int:
     return p
 
 
+def _bracket_seeding_order(n: int) -> list[int]:
+    """Standard tournament bracket seeding order for *n* slots (power of 2).
+
+    Returns 1-indexed seeds where adjacent pairs form matchups.
+    E.g. n=8 → [1, 8, 4, 5, 2, 7, 3, 6]
+      → matchups: 1v8, 4v5, 2v7, 3v6
+    This guarantees #1 and #2 are in opposite halves and can only meet in the final.
+    """
+    order = [1]
+    size = 1
+    while size < n:
+        size *= 2
+        new_order = []
+        for s in order:
+            new_order.append(s)
+            new_order.append(size + 1 - s)
+        order = new_order
+    return order
+
+
 def _build_round_matchups(
     season_id: int,
     round_num: int,
@@ -56,50 +76,50 @@ def _build_round_matchups(
     """
     Build matchups for one round given an ordered list of book IDs (best first).
 
-    Top seeds get byes when the count is not a power of 2. Byes are stored as
-    matchups where book_a == book_b with winner_id pre-set, so they auto-resolve
-    without requiring any votes.
-
-    Real matchups pair: position 1 vs position N, 2 vs N-1, etc.
+    Uses standard tournament bracket seeding so that #1 and #2 are on opposite
+    sides and can only meet in the final. Seeds without a corresponding book
+    (when count is not a power of 2) become byes — stored as matchups where
+    book_a == book_b with winner_id pre-set.
     """
     n = len(ordered_book_ids)
     if n < 2:
         return []
 
     total_slots = _next_power_of_2(n)
-    num_byes = total_slots - n
+    seeding = _bracket_seeding_order(total_slots)
 
     matchups = []
     position = 1
 
-    # Top num_byes entries get byes (auto-resolved, no voting needed)
-    for i in range(num_byes):
-        book_id = ordered_book_ids[i]
-        matchups.append(
-            {
-                "season_id": season_id,
-                "round": round_num,
-                "position": position,
-                "book_a_id": book_id,
-                "book_b_id": book_id,
-                "winner_id": book_id,
-            }
-        )
-        position += 1
+    for i in range(0, total_slots, 2):
+        seed_a = seeding[i] - 1  # convert to 0-indexed
+        seed_b = seeding[i + 1] - 1
 
-    # Pair remaining entries: top vs bottom
-    remaining = ordered_book_ids[num_byes:]
-    half = len(remaining) // 2
-    for i in range(half):
-        matchups.append(
-            {
-                "season_id": season_id,
-                "round": round_num,
-                "position": position,
-                "book_a_id": remaining[i],
-                "book_b_id": remaining[-(i + 1)],
-            }
-        )
+        has_a = seed_a < n
+        has_b = seed_b < n
+
+        if has_a and has_b:
+            matchups.append(
+                {
+                    "season_id": season_id,
+                    "round": round_num,
+                    "position": position,
+                    "book_a_id": ordered_book_ids[seed_a],
+                    "book_b_id": ordered_book_ids[seed_b],
+                }
+            )
+        elif has_a:
+            book_id = ordered_book_ids[seed_a]
+            matchups.append(
+                {
+                    "season_id": season_id,
+                    "round": round_num,
+                    "position": position,
+                    "book_a_id": book_id,
+                    "book_b_id": book_id,
+                    "winner_id": book_id,
+                }
+            )
         position += 1
 
     return matchups
@@ -123,11 +143,40 @@ def build_next_round_matchups(
     """
     Build next-round matchups from the completed matchups of the previous round.
 
-    Winners are ordered by their matchup position, then paired top vs bottom.
+    Winners are paired by adjacent positions (1&2, 3&4, …) so the bracket
+    structure is preserved — a #1 seed can only meet a #2 seed in the final.
     """
     ordered = sorted(completed_matchups, key=lambda m: m.position)
     winners = [m.winner_id for m in ordered]
-    return _build_round_matchups(season_id, next_round, winners)
+
+    matchups: list[dict] = []
+    position = 1
+    for i in range(0, len(winners), 2):
+        if i + 1 < len(winners):
+            matchups.append(
+                {
+                    "season_id": season_id,
+                    "round": next_round,
+                    "position": position,
+                    "book_a_id": winners[i],
+                    "book_b_id": winners[i + 1],
+                }
+            )
+        else:
+            # Odd winner count — bye
+            matchups.append(
+                {
+                    "season_id": season_id,
+                    "round": next_round,
+                    "position": position,
+                    "book_a_id": winners[i],
+                    "book_b_id": winners[i],
+                    "winner_id": winners[i],
+                }
+            )
+        position += 1
+
+    return matchups
 
 
 def resolve_matchup_winner(

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.voting import (
+    _bracket_seeding_order,
     _next_power_of_2,
     build_first_round_matchups,
     build_next_round_matchups,
@@ -129,6 +130,34 @@ def test_next_power_of_2(n, expected):
 
 
 # ---------------------------------------------------------------------------
+# _bracket_seeding_order
+# ---------------------------------------------------------------------------
+
+
+def test_bracket_seeding_order_2():
+    assert _bracket_seeding_order(2) == [1, 2]
+
+
+def test_bracket_seeding_order_4():
+    assert _bracket_seeding_order(4) == [1, 4, 2, 3]
+
+
+def test_bracket_seeding_order_8():
+    # 1v8, 4v5 in top half; 2v7, 3v6 in bottom half
+    assert _bracket_seeding_order(8) == [1, 8, 4, 5, 2, 7, 3, 6]
+
+
+def test_bracket_seeding_order_16():
+    order = _bracket_seeding_order(16)
+    # #1 and #2 must be in opposite halves (positions 1-8 vs 9-16)
+    assert 1 in order[:8]
+    assert 2 in order[8:]
+    # Each adjacent pair sums to 17 (n+1)
+    for i in range(0, 16, 2):
+        assert order[i] + order[i + 1] == 17
+
+
+# ---------------------------------------------------------------------------
 # build_first_round_matchups / _build_round_matchups
 # ---------------------------------------------------------------------------
 
@@ -174,7 +203,7 @@ def test_build_round_matchups_3_books():
 
 
 def test_build_round_matchups_8_books():
-    """8 books: no byes, 4 matchups."""
+    """8 books: no byes, 4 matchups in bracket seeding order."""
     seed_map = _seed_map(1, 2, 3, 4, 5, 6, 7, 8)
     matchups = build_first_round_matchups(season_id=1, seed_map=seed_map)
     real = [m for m in matchups if m["book_a_id"] != m["book_b_id"]]
@@ -183,13 +212,35 @@ def test_build_round_matchups_8_books():
     assert len(real) == 4
     pairs = [{m["book_a_id"], m["book_b_id"]} for m in real]
     assert {1, 8} in pairs
+    assert {4, 5} in pairs
     assert {2, 7} in pairs
     assert {3, 6} in pairs
-    assert {4, 5} in pairs
+
+
+def test_build_round_matchups_8_books_bracket_halves():
+    """#1 and #2 must be in opposite halves (positions 1-2 vs 3-4)."""
+    seed_map = _seed_map(1, 2, 3, 4, 5, 6, 7, 8)
+    matchups = build_first_round_matchups(season_id=1, seed_map=seed_map)
+    matchups.sort(key=lambda m: m["position"])
+    # Top half (positions 1-2): seeds 1,8,4,5
+    top_half_books = set()
+    for m in matchups[:2]:
+        top_half_books.add(m["book_a_id"])
+        top_half_books.add(m["book_b_id"])
+    # Bottom half (positions 3-4): seeds 2,7,3,6
+    bottom_half_books = set()
+    for m in matchups[2:]:
+        bottom_half_books.add(m["book_a_id"])
+        bottom_half_books.add(m["book_b_id"])
+    assert 1 in top_half_books
+    assert 2 in bottom_half_books
+    # They cannot be in the same half
+    assert 1 not in bottom_half_books
+    assert 2 not in top_half_books
 
 
 def test_build_round_matchups_7_books():
-    """7 books: 1 bye for seed 1, 3 real matchups."""
+    """7 books: 1 bye for seed 1, 3 real matchups. #1 and #2 in opposite halves."""
     seed_map = _seed_map(1, 2, 3, 4, 5, 6, 7)
     matchups = build_first_round_matchups(season_id=1, seed_map=seed_map)
     byes = [m for m in matchups if m["book_a_id"] == m["book_b_id"]]
@@ -197,6 +248,16 @@ def test_build_round_matchups_7_books():
     assert len(byes) == 1
     assert byes[0]["book_a_id"] == 1
     assert len(real) == 3
+    # #2 should be in a real matchup in the bottom half, not adjacent to #1's bye
+    matchups.sort(key=lambda m: m["position"])
+    top_half_ids = set()
+    for m in matchups[:2]:
+        top_half_ids.update([m["book_a_id"], m["book_b_id"]])
+    bottom_half_ids = set()
+    for m in matchups[2:]:
+        bottom_half_ids.update([m["book_a_id"], m["book_b_id"]])
+    assert 1 in top_half_ids
+    assert 2 in bottom_half_ids
 
 
 def test_byes_are_pre_resolved():
@@ -250,21 +311,25 @@ def test_resolve_matchup_winner_tie_by_first_vote():
 
 
 def test_build_next_round_from_4():
-    """4 QF winners → 2 SF matchups, paired position 1v4 and 2v3."""
+    """4 QF winners → 2 SF matchups, paired by adjacent positions (1v2, 3v4)."""
+    # With proper bracket seeding: 1v8, 4v5, 2v7, 3v6
     completed = [
         make_matchup(id=1, book_a_id=1, book_b_id=8, position=1, winner_id=1),
-        make_matchup(id=2, book_a_id=2, book_b_id=7, position=2, winner_id=2),
-        make_matchup(id=3, book_a_id=3, book_b_id=6, position=3, winner_id=3),
-        make_matchup(id=4, book_a_id=4, book_b_id=5, position=4, winner_id=4),
+        make_matchup(id=2, book_a_id=4, book_b_id=5, position=2, winner_id=4),
+        make_matchup(id=3, book_a_id=2, book_b_id=7, position=3, winner_id=2),
+        make_matchup(id=4, book_a_id=3, book_b_id=6, position=4, winner_id=3),
     ]
     matchups = build_next_round_matchups(season_id=1, completed_matchups=completed, next_round=2)
     real = [m for m in matchups if m["book_a_id"] != m["book_b_id"]]
     assert len(real) == 2
-    pairs = [{m["book_a_id"], m["book_b_id"]} for m in real]
-    # position 1 winner (1) vs position 4 winner (4)
-    assert {1, 4} in pairs
-    # position 2 winner (2) vs position 3 winner (3)
-    assert {2, 3} in pairs
+    # Adjacent pairing: position 1 winner vs position 2 winner
+    assert real[0]["book_a_id"] == 1
+    assert real[0]["book_b_id"] == 4
+    assert real[0]["position"] == 1
+    # Position 3 winner vs position 4 winner
+    assert real[1]["book_a_id"] == 2
+    assert real[1]["book_b_id"] == 3
+    assert real[1]["position"] == 2
 
 
 def test_build_next_round_from_2():
@@ -276,7 +341,62 @@ def test_build_next_round_from_2():
     matchups = build_next_round_matchups(season_id=1, completed_matchups=completed, next_round=3)
     real = [m for m in matchups if m["book_a_id"] != m["book_b_id"]]
     assert len(real) == 1
-    assert {real[0]["book_a_id"], real[0]["book_b_id"]} == {1, 2}
+    assert real[0]["book_a_id"] == 1
+    assert real[0]["book_b_id"] == 2
+
+
+def test_build_next_round_preserves_bracket_structure():
+    """In a standard 8-seed bracket, #1 can only meet #2 in the final."""
+    # Round 1 with proper bracket seeding: 1v8, 4v5, 2v7, 3v6
+    r1 = [
+        make_matchup(id=1, book_a_id=1, book_b_id=8, position=1, winner_id=1),
+        make_matchup(id=2, book_a_id=4, book_b_id=5, position=2, winner_id=4),
+        make_matchup(id=3, book_a_id=2, book_b_id=7, position=3, winner_id=2),
+        make_matchup(id=4, book_a_id=3, book_b_id=6, position=4, winner_id=3),
+    ]
+    r2 = build_next_round_matchups(season_id=1, completed_matchups=r1, next_round=2)
+    # SF1: 1 vs 4 (top half), SF2: 2 vs 3 (bottom half)
+    assert r2[0]["book_a_id"] == 1 and r2[0]["book_b_id"] == 4
+    assert r2[1]["book_a_id"] == 2 and r2[1]["book_b_id"] == 3
+    # #1 and #2 are in opposite semis — can only meet in the final
+    sf = [
+        make_matchup(id=5, book_a_id=1, book_b_id=4, position=1, winner_id=1),
+        make_matchup(id=6, book_a_id=2, book_b_id=3, position=2, winner_id=2),
+    ]
+    r3 = build_next_round_matchups(season_id=1, completed_matchups=sf, next_round=3)
+    # Final: 1 vs 2
+    assert r3[0]["book_a_id"] == 1 and r3[0]["book_b_id"] == 2
+
+
+def test_build_next_round_upsets_stay_in_bracket_half():
+    """If lower seeds upset, they stay in their bracket half."""
+    # Round 1 with proper seeding: 1v8, 4v5, 2v7, 3v6 — all upsets
+    r1 = [
+        make_matchup(id=1, book_a_id=1, book_b_id=8, position=1, winner_id=8),
+        make_matchup(id=2, book_a_id=4, book_b_id=5, position=2, winner_id=5),
+        make_matchup(id=3, book_a_id=2, book_b_id=7, position=3, winner_id=7),
+        make_matchup(id=4, book_a_id=3, book_b_id=6, position=4, winner_id=6),
+    ]
+    r2 = build_next_round_matchups(season_id=1, completed_matchups=r1, next_round=2)
+    # SF1: 8 vs 5 (top half), SF2: 7 vs 6 (bottom half)
+    assert r2[0]["book_a_id"] == 8 and r2[0]["book_b_id"] == 5
+    assert r2[1]["book_a_id"] == 7 and r2[1]["book_b_id"] == 6
+
+
+def test_build_next_round_odd_winners_bye():
+    """Odd number of winners produces a bye in the next round."""
+    r1 = [
+        make_matchup(id=1, book_a_id=1, book_b_id=6, position=1, winner_id=1),
+        make_matchup(id=2, book_a_id=2, book_b_id=5, position=2, winner_id=2),
+        make_matchup(id=3, book_a_id=3, book_b_id=4, position=3, winner_id=3),
+    ]
+    r2 = build_next_round_matchups(season_id=1, completed_matchups=r1, next_round=2)
+    assert len(r2) == 2
+    # First matchup: 1 vs 2
+    assert r2[0]["book_a_id"] == 1 and r2[0]["book_b_id"] == 2
+    # Second: bye for winner 3
+    assert r2[1]["book_a_id"] == 3 and r2[1]["book_b_id"] == 3
+    assert r2[1]["winner_id"] == 3
 
 
 # ---------------------------------------------------------------------------
