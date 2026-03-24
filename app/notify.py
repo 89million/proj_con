@@ -22,25 +22,26 @@ async def send_discord(message: str) -> None:
 
 
 async def send_email(to_emails: list[str], subject: str, body: str) -> None:
-    """Send an email via Resend to a list of recipients. Fails silently."""
+    """Send one email per recipient via Resend. Fails silently per address."""
     api_key = settings.resend_api_key
     if not api_key or not to_emails:
         return
-    try:
-        async with httpx.AsyncClient() as client:
-            await client.post(
-                "https://api.resend.com/emails",
-                headers={"Authorization": f"Bearer {api_key}"},
-                json={
-                    "from": f"Stumbling Book Club <{settings.resend_from_email}>",
-                    "to": to_emails,
-                    "subject": subject,
-                    "html": body,
-                },
-                timeout=10,
-            )
-    except Exception:
-        logger.warning("Resend email failed", exc_info=True)
+    async with httpx.AsyncClient() as client:
+        for email in to_emails:
+            try:
+                await client.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    json={
+                        "from": f"Stumbling Book Club <{settings.resend_from_email}>",
+                        "to": [email],
+                        "subject": subject,
+                        "html": body,
+                    },
+                    timeout=10,
+                )
+            except Exception:
+                logger.warning("Resend email to %s failed", email, exc_info=True)
 
 
 async def notify_all(
