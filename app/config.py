@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     allowed_emails: str = ""  # comma-separated; empty = allow all (dev only)
     gemini_api_key: str = ""
     discord_webhook_url: str = ""
+    resend_api_key: str = ""
+    resend_from_email: str = "thehereandnow@stumblingbookclub.com"
 
     def is_email_allowed(self, email: str) -> bool:
         if not self.allowed_emails.strip():
