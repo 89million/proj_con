@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     app_base_url: str = "http://localhost:8000"
     allowed_emails: str = ""  # comma-separated; empty = allow all (dev only)
     gemini_api_key: str = ""
+    discord_webhook_url: str = ""
 
     def is_email_allowed(self, email: str) -> bool:
         if not self.allowed_emails.strip():

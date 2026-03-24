@@ -2,7 +2,7 @@
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import crud, voting
+from app import crud, notify, voting
 from app.models import ReadBook, Season, SeasonState
 
 
@@ -16,6 +16,10 @@ async def maybe_advance_from_submit(db: AsyncSession, season: Season) -> bool:
 
     if total_participants > 0 and submissions >= total_participants:
         await crud.set_season_state(db, season, SeasonState.ranking)
+        await notify.send_discord(
+            f"📚 **{season.name}** — All books are in! "
+            f"Time to rank your favorites. Head to the site and submit your ranking."
+        )
         return True
     return False
 
@@ -48,6 +52,10 @@ async def maybe_advance_from_ranking(db: AsyncSession, season: Season) -> bool:
         await crud.create_matchups(db, first_round)
 
         await crud.set_season_state(db, season, SeasonState.bracket)
+        await notify.send_discord(
+            f"🏆 **{season.name}** — Rankings are locked in! "
+            f"The tournament bracket is live. Cast your first-round votes!"
+        )
         return True
     return False
 
@@ -116,11 +124,19 @@ async def maybe_advance_bracket_round(db: AsyncSession, season: Season) -> bool:
         )
         db.add(rb)
         await crud.set_season_state(db, season, SeasonState.complete)
+        await notify.send_discord(
+            f"🎉 **{season.name}** is complete! "
+            f"The winner is **{winner_book.title}** by {winner_book.author}!"
+        )
     else:
         # Advance to next round
         next_round_matchups = voting.build_next_round_matchups(
             season.id, matchups, current_round + 1
         )
         await crud.create_matchups(db, next_round_matchups)
+        await notify.send_discord(
+            f"⚔️ **{season.name}** — Round {current_round} is decided! "
+            f"The next round is now open for voting."
+        )
 
     return True
