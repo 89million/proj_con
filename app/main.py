@@ -21,7 +21,7 @@ from app.auth import (
 )
 from app.config import settings
 from app.database import get_db
-from app.models import IdeaStatus, SeasonState, User
+from app.models import IdeaStatus, ReadBook, SeasonState, User
 
 app = FastAPI(title="Stumbling Book Club")
 
@@ -630,8 +630,12 @@ async def history_page(
         seasons_with_winners.append((s, winner))
 
     read_books = []
+    avg_ratings: dict[int, float] = {}
+    review_counts: dict[int, int] = {}
     if tab == "books":
         read_books = await crud.get_approved_read_books(db)
+        avg_ratings = await crud.get_average_ratings(db)
+        review_counts = await crud.get_review_counts(db)
 
     return templates.TemplateResponse(
         "history.html",
@@ -640,6 +644,8 @@ async def history_page(
             "user": user,
             "seasons_with_winners": seasons_with_winners,
             "read_books": read_books,
+            "avg_ratings": avg_ratings,
+            "review_counts": review_counts,
             "tab": tab,
             "submitted": submitted,
             "duplicate": duplicate,
@@ -710,6 +716,50 @@ async def history_season_page(
             "seed_tiebreakers": seed_ties,
         },
     )
+
+
+@app.get("/history/book/{read_book_id}", response_class=HTMLResponse)
+async def book_detail_page(
+    read_book_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    rb = await db.get(ReadBook, read_book_id)
+    if rb is None or rb.pending:
+        raise HTTPException(status_code=404, detail="Book not found.")
+    reviews = await crud.get_reviews_for_book(db, read_book_id)
+    my_review = next((r for r in reviews if r.user_id == user.id), None)
+    avg_rating = round(sum(r.rating for r in reviews) / len(reviews), 1) if reviews else None
+    return templates.TemplateResponse(
+        "book_detail.html",
+        {
+            "request": request,
+            "user": user,
+            "book": rb,
+            "reviews": reviews,
+            "my_review": my_review,
+            "avg_rating": avg_rating,
+        },
+    )
+
+
+@app.post("/history/book/{read_book_id}/review", response_class=HTMLResponse)
+async def save_book_review(
+    read_book_id: int,
+    rating: int = Form(...),
+    review_text: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    rb = await db.get(ReadBook, read_book_id)
+    if rb is None or rb.pending:
+        raise HTTPException(status_code=404, detail="Book not found.")
+    if not 1 <= rating <= 5:
+        raise HTTPException(status_code=422, detail="Rating must be 1–5.")
+    text = review_text.strip()[:2500] or None
+    await crud.save_review(db, read_book_id, user.id, rating, text)
+    return RedirectResponse(f"/history/book/{read_book_id}", status_code=302)
 
 
 # ---------------------------------------------------------------------------

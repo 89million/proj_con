@@ -114,6 +114,9 @@ class ReadBook(Base):
     added_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     added_by_user: Mapped["User"] = relationship("User", back_populates="read_books_added")
+    reviews: Mapped[list["BookReview"]] = relationship(
+        "BookReview", back_populates="read_book", cascade="all, delete-orphan"
+    )
 
 
 class BordaVote(Base):
@@ -245,3 +248,22 @@ class IdeaUpvote(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
 
     idea: Mapped["FeatureIdea"] = relationship("FeatureIdea", back_populates="upvotes")
+
+
+class BookReview(Base):
+    """A user's star rating and optional text review for a read book."""
+
+    __tablename__ = "book_reviews"
+    __table_args__ = (
+        UniqueConstraint("read_book_id", "user_id", name="uq_one_review_per_user_per_book"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    read_book_id: Mapped[int] = mapped_column(ForeignKey("read_books.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)  # 1–5 stars
+    review_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    read_book: Mapped["ReadBook"] = relationship("ReadBook", back_populates="reviews")
+    user: Mapped["User"] = relationship("User")

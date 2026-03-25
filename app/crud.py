@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models import (
     Book,
+    BookReview,
     BordaVote,
     BracketMatchup,
     BracketVote,
@@ -353,6 +354,68 @@ async def approve_read_book(db: AsyncSession, read_book_id: int) -> bool:
     rb.pending = False
     await db.commit()
     return True
+
+
+# ---------------------------------------------------------------------------
+# Book reviews / ratings
+# ---------------------------------------------------------------------------
+
+
+async def get_review_for_user(
+    db: AsyncSession, read_book_id: int, user_id: int
+) -> BookReview | None:
+    result = await db.execute(
+        select(BookReview).where(
+            BookReview.read_book_id == read_book_id, BookReview.user_id == user_id
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_reviews_for_book(db: AsyncSession, read_book_id: int) -> list[BookReview]:
+    result = await db.execute(
+        select(BookReview)
+        .where(BookReview.read_book_id == read_book_id)
+        .options(selectinload(BookReview.user))
+        .order_by(BookReview.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def save_review(
+    db: AsyncSession, read_book_id: int, user_id: int, rating: int, review_text: str | None
+) -> BookReview:
+    """Create or update a user's review for a read book."""
+    existing = await get_review_for_user(db, read_book_id, user_id)
+    if existing:
+        existing.rating = rating
+        existing.review_text = review_text
+    else:
+        existing = BookReview(
+            read_book_id=read_book_id, user_id=user_id, rating=rating, review_text=review_text
+        )
+        db.add(existing)
+    await db.commit()
+    await db.refresh(existing)
+    return existing
+
+
+async def get_average_ratings(db: AsyncSession) -> dict[int, float]:
+    """Return {read_book_id: avg_rating} for all books that have at least one review."""
+    result = await db.execute(
+        select(BookReview.read_book_id, func.avg(BookReview.rating)).group_by(
+            BookReview.read_book_id
+        )
+    )
+    return {row[0]: round(float(row[1]), 1) for row in result.all()}
+
+
+async def get_review_counts(db: AsyncSession) -> dict[int, int]:
+    """Return {read_book_id: count} for all books that have at least one review."""
+    result = await db.execute(
+        select(BookReview.read_book_id, func.count()).group_by(BookReview.read_book_id)
+    )
+    return {row[0]: row[1] for row in result.all()}
 
 
 # ---------------------------------------------------------------------------

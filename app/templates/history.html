@@ -76,15 +76,29 @@
   {% if read_books %}
     <div class="flex flex-col gap-2">
       {% for rb in read_books %}
-        <div class="bg-white border border-forest-200 rounded-lg px-5 py-3 flex items-center justify-between">
-          <div>
-            <span class="font-medium text-forest-800">{{ rb.title }}</span>
-            <span class="text-forest-500 text-sm">by {{ rb.author }}</span>
+        <a href="/history/book/{{ rb.id }}"
+           class="block bg-white border border-forest-200 rounded-lg px-5 py-3 hover:shadow-md hover:border-forest-400 transition">
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="font-medium text-forest-800">{{ rb.title }}</span>
+              <span class="text-forest-500 text-sm">by {{ rb.author }}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              {% if rb.id in avg_ratings %}
+                <div class="flex items-center gap-0.5">
+                  {% for i in range(1, 6) %}
+                    <span class="text-xs {{ 'text-forest-400' if i <= avg_ratings[rb.id] | int else 'text-forest-200' }}">&#9733;</span>
+                  {% endfor %}
+                  <span class="text-forest-400 text-xs ml-1">{{ avg_ratings[rb.id] }}</span>
+                  <span class="text-forest-300 text-xs">({{ review_counts.get(rb.id, 0) }})</span>
+                </div>
+              {% endif %}
+              {% if rb.won %}
+                <span class="text-xs bg-forest-100 text-forest-600 px-2 py-0.5 rounded-full font-medium">&#127942; Winner</span>
+              {% endif %}
+            </div>
           </div>
-          {% if rb.won %}
-            <span class="text-xs bg-forest-100 text-forest-600 px-2 py-0.5 rounded-full font-medium">&#127942; Winner</span>
-          {% endif %}
-        </div>
+        </a>
       {% endfor %}
     </div>
     <p class="text-forest-400 text-xs mt-4">{{ read_books | length }} book{{ 's' if read_books | length != 1 else '' }} total</p>
