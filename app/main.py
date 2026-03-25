@@ -1212,6 +1212,37 @@ async def delete_book(
 
 
 # ---------------------------------------------------------------------------
+# User settings
+# ---------------------------------------------------------------------------
+
+
+@app.get("/settings", response_class=HTMLResponse)
+async def settings_page(
+    request: Request,
+    user: User = Depends(require_user),
+):
+    saved = request.query_params.get("saved") == "1"
+    return templates.TemplateResponse(
+        "settings.html",
+        {"request": request, "user": user, "saved": saved},
+    )
+
+
+@app.post("/settings", response_class=HTMLResponse)
+async def save_settings(
+    display_name: str = Form(""),
+    email_notifications: str = Form("off"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    db_user = await db.get(User, user.id)
+    db_user.display_name = display_name.strip() or None
+    db_user.email_notifications = email_notifications == "on"
+    await db.commit()
+    return RedirectResponse("/settings?saved=1", status_code=302)
+
+
+# ---------------------------------------------------------------------------
 # Feature ideas
 # ---------------------------------------------------------------------------
 

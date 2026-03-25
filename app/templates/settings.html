@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Settings — Stumbling Book Club{% endblock %}
+{% block content %}
+
+<h1 class="text-2xl font-bold text-forest-700 mb-6">Settings</h1>
+
+{% if saved %}
+  <div class="mb-4 p-3 bg-forest-50 border border-forest-200 rounded-lg text-forest-600 text-sm font-semibold">
+    Settings saved!
+  </div>
+{% endif %}
+
+<form method="post" action="/settings" class="space-y-6 max-w-md">
+
+  <!-- Display name -->
+  <div>
+    <label class="block text-sm font-medium text-forest-700 mb-1" for="display_name">Display Name</label>
+    <input
+      id="display_name" name="display_name" type="text"
+      value="{{ user.display_name or '' }}"
+      placeholder="{{ user.name }}"
+      class="w-full border border-forest-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900"
+    />
+    <p class="text-xs text-forest-300 mt-1">Leave blank to use your Google account name ({{ user.name }})</p>
+  </div>
+
+  <!-- Email notifications -->
+  <div>
+    <label class="flex items-center gap-3 cursor-pointer">
+      <input type="hidden" name="email_notifications" value="off" />
+      <input
+        type="checkbox" name="email_notifications" value="on"
+        {% if user.email_notifications %}checked{% endif %}
+        class="w-4 h-4 rounded border-forest-300 text-forest-600 focus:ring-forest-400"
+      />
+      <div>
+        <span class="text-sm font-medium text-forest-700">Email notifications</span>
+        <p class="text-xs text-forest-300">Get an email when the season advances (ranking opens, bracket starts, winner announced)</p>
+      </div>
+    </label>
+  </div>
+
+  <button type="submit" class="bg-forest-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-forest-500 transition">
+    Save
+  </button>
+</form>
+
+{% endblock %}

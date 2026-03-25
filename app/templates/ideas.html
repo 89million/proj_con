@@ -56,7 +56,7 @@
           {% elif idea.status.value == 'wont_do' %}
             <span class="text-xs bg-stone-100 text-stone-500 px-2 py-0.5 rounded-full font-medium">Won't Do</span>
           {% endif %}
-          <span class="text-xs text-forest-300">{{ idea.author.name }} &middot; {{ idea.created_at.strftime('%b %d, %Y') }}</span>
+          <span class="text-xs text-forest-300">{{ idea.author.visible_name }} &middot; {{ idea.created_at.strftime('%b %d, %Y') }}</span>
         </div>
         {% if idea.admin_note %}
         <p class="text-xs text-forest-400 italic mt-2">{{ idea.admin_note | unescape }}</p>

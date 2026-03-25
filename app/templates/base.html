@@ -64,11 +64,12 @@
       <!-- Desktop nav -->
       <div class="hidden md:flex items-center gap-4 text-sm">
         {% if user.avatar_url %}
-          <img src="{{ user.avatar_url }}" class="w-8 h-8 rounded-full border-2 border-forest-400" alt="{{ user.name }}" />
+          <img src="{{ user.avatar_url }}" class="w-8 h-8 rounded-full border-2 border-forest-400" alt="{{ user.visible_name }}" />
         {% endif %}
-        <span class="font-medium opacity-90">{{ user.name }}</span>
+        <span class="font-medium opacity-90">{{ user.visible_name }}</span>
         <a href="/history" class="hover:underline opacity-60 text-xs">History</a>
         <a href="/ideas" class="hover:underline opacity-60 text-xs">Ideas</a>
+        <a href="/settings" class="hover:underline opacity-60 text-xs">Settings</a>
         {% if user.is_admin %}
           <a href="/admin" class="bg-forest-500 hover:bg-forest-400 px-3 py-1 rounded text-xs font-semibold transition">Admin</a>
         {% endif %}
@@ -92,12 +93,13 @@
     <div id="mobile-menu" class="hidden md:hidden mt-3 pt-3 border-t border-forest-600 flex flex-col gap-3 text-sm">
       <div class="flex items-center gap-2">
         {% if user.avatar_url %}
-          <img src="{{ user.avatar_url }}" class="w-8 h-8 rounded-full border-2 border-forest-400" alt="{{ user.name }}" />
+          <img src="{{ user.avatar_url }}" class="w-8 h-8 rounded-full border-2 border-forest-400" alt="{{ user.visible_name }}" />
         {% endif %}
-        <span class="font-medium opacity-90">{{ user.name }}</span>
+        <span class="font-medium opacity-90">{{ user.visible_name }}</span>
       </div>
       <a href="/history" class="hover:underline opacity-80">History</a>
       <a href="/ideas" class="hover:underline opacity-80">Ideas</a>
+      <a href="/settings" class="hover:underline opacity-80">Settings</a>
       {% if user.is_admin %}
         <a href="/admin" class="hover:underline opacity-80">Admin</a>
       {% endif %}

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ target.name }} — Member Stats{% endblock %}
+{% block title %}{{ target.visible_name }} — Member Stats{% endblock %}
 {% block content %}
 
 <a href="/admin" class="text-sm text-forest-400 hover:text-forest-600">&larr; Back to Admin</a>
@@ -7,10 +7,10 @@
 <!-- Header -->
 <div class="flex items-center gap-4 mt-4 mb-6">
   {% if target.avatar_url %}
-    <img src="{{ target.avatar_url }}" class="w-14 h-14 rounded-full border-2 border-forest-200" alt="{{ target.name }}" />
+    <img src="{{ target.avatar_url }}" class="w-14 h-14 rounded-full border-2 border-forest-200" alt="{{ target.visible_name }}" />
   {% endif %}
   <div>
-    <h1 class="font-serif text-2xl font-bold text-forest-700">{{ target.name }}</h1>
+    <h1 class="font-serif text-2xl font-bold text-forest-700">{{ target.visible_name }}</h1>
     <p class="text-forest-400 text-sm">Member since {{ target.created_at.strftime('%b %Y') }}</p>
   </div>
 </div>

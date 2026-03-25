@@ -9,7 +9,7 @@ from app.models import ReadBook, Season, SeasonState
 
 async def _participant_emails(db: AsyncSession, season_id: int) -> list[str]:
     participants = await crud.get_participants_for_season(db, season_id)
-    return [u.email for u in participants if u.email]
+    return [u.email for u in participants if u.email and u.email_notifications]
 
 
 async def maybe_advance_from_submit(db: AsyncSession, season: Season) -> bool:

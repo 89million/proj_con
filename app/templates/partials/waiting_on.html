@@ -3,7 +3,7 @@
   <div class="flex flex-wrap items-center gap-1.5">
     <span class="font-semibold mr-1">Still waiting on:</span>
     {% for u in waiting_on %}
-      <span class="bg-sound-100 text-sound-500 rounded px-2 py-0.5 font-medium whitespace-nowrap">{{ u.name }}</span>
+      <span class="bg-sound-100 text-sound-500 rounded px-2 py-0.5 font-medium whitespace-nowrap">{{ u.visible_name }}</span>
     {% endfor %}
   </div>
 </div>

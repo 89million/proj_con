@@ -37,10 +37,16 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String, nullable=True)
     google_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    email_notifications: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    @property
+    def visible_name(self) -> str:
+        return self.display_name or self.name
 
     books: Mapped[list["Book"]] = relationship("Book", back_populates="submitter")
     borda_votes: Mapped[list["BordaVote"]] = relationship("BordaVote", back_populates="user")

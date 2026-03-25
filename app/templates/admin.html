@@ -15,7 +15,7 @@
   </p>
   <ul class="list-disc list-inside text-amber-700 space-y-0.5">
     {% for u in allowlist_gaps %}
-      <li>{{ u.name }} — <span class="font-mono">{{ u.email }}</span></li>
+      <li>{{ u.visible_name }} — <span class="font-mono">{{ u.email }}</span></li>
     {% endfor %}
   </ul>
 </div>
@@ -48,7 +48,7 @@
       <ul class="divide-y divide-forest-50 mb-3">
         {% for p in season_participants %}
         <li class="flex items-center justify-between py-1.5 text-sm">
-          <span class="text-forest-800">{{ p.name }} <span class="text-forest-300 text-xs">{{ p.email }}</span></span>
+          <span class="text-forest-800">{{ p.visible_name }} <span class="text-forest-300 text-xs">{{ p.email }}</span></span>
           <form method="post" action="/admin/season/{{ active_season.id }}/participants/remove/{{ p.id }}">
             <button class="text-red-400 hover:text-red-600 text-xs font-medium">Remove</button>
           </form>
@@ -65,7 +65,7 @@
         <select name="user_id"
                 class="flex-1 border border-forest-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900">
           {% for u in season_non_participants %}
-          <option value="{{ u.id }}">{{ u.name }} ({{ u.email }})</option>
+          <option value="{{ u.id }}">{{ u.visible_name }} ({{ u.email }})</option>
           {% endfor %}
         </select>
         <button class="bg-forest-600 text-white px-3 py-1.5 rounded-lg text-sm font-semibold hover:bg-forest-500 transition">
@@ -88,14 +88,14 @@
     {% if god_mode.not_submitted %}
       <p class="text-sm text-forest-500 mb-3">
         <strong>{{ god_mode.not_submitted|length }}</strong> user{{ 's' if god_mode.not_submitted|length != 1 }} still need{{ '' if god_mode.not_submitted|length != 1 else 's' }} to submit:
-        {% for u in god_mode.not_submitted %}<span class="font-medium text-forest-700">{{ u.name }}</span>{{ ', ' if not loop.last }}{% endfor %}
+        {% for u in god_mode.not_submitted %}<span class="font-medium text-forest-700">{{ u.visible_name }}</span>{{ ', ' if not loop.last }}{% endfor %}
       </p>
       <form method="post" action="/admin/god-mode/submit" class="space-y-3">
         <div class="flex flex-wrap gap-3">
           <select name="user_id" required
                   class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 text-forest-900">
             {% for u in god_mode.not_submitted %}
-            <option value="{{ u.id }}">{{ u.name }}</option>
+            <option value="{{ u.id }}">{{ u.visible_name }}</option>
             {% endfor %}
           </select>
         </div>
@@ -183,13 +183,13 @@
     {% if god_mode.not_ranked %}
       <p class="text-sm text-forest-500 mb-3">
         <strong>{{ god_mode.not_ranked|length }}</strong> user{{ 's' if god_mode.not_ranked|length != 1 }} still need{{ '' if god_mode.not_ranked|length != 1 else 's' }} to rank:
-        {% for u in god_mode.not_ranked %}<span class="font-medium text-forest-700">{{ u.name }}</span>{{ ', ' if not loop.last }}{% endfor %}
+        {% for u in god_mode.not_ranked %}<span class="font-medium text-forest-700">{{ u.visible_name }}</span>{{ ', ' if not loop.last }}{% endfor %}
       </p>
       <form method="post" action="/admin/god-mode/rank" id="gm-ranking-form" class="space-y-3">
         <select name="user_id" required
                 class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 text-forest-900">
           {% for u in god_mode.not_ranked %}
-          <option value="{{ u.id }}">{{ u.name }}</option>
+          <option value="{{ u.id }}">{{ u.visible_name }}</option>
           {% endfor %}
         </select>
 
@@ -270,13 +270,13 @@
       <p class="text-sm text-forest-500 mb-3">
         Round {{ god_mode.current_round }} —
         <strong>{{ god_mode.not_voted|length }}</strong> user{{ 's' if god_mode.not_voted|length != 1 }} still need{{ '' if god_mode.not_voted|length != 1 else 's' }} to vote:
-        {% for u in god_mode.not_voted %}<span class="font-medium text-forest-700">{{ u.name }}</span>{{ ', ' if not loop.last }}{% endfor %}
+        {% for u in god_mode.not_voted %}<span class="font-medium text-forest-700">{{ u.visible_name }}</span>{{ ', ' if not loop.last }}{% endfor %}
       </p>
 
       <div class="space-y-3">
         <select id="gm-bracket-user" class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 text-forest-900">
           {% for u in god_mode.not_voted %}
-          <option value="{{ u.id }}">{{ u.name }}</option>
+          <option value="{{ u.id }}">{{ u.visible_name }}</option>
           {% endfor %}
         </select>
 
@@ -355,7 +355,7 @@
       <div>
         <span class="font-medium text-forest-800">{{ rb.title }}</span>
         <span class="text-forest-400 ml-1">— {{ rb.author }}</span>
-        <span class="text-xs text-forest-300 ml-2">suggested by {{ rb.added_by_user.name }}</span>
+        <span class="text-xs text-forest-300 ml-2">suggested by {{ rb.added_by_user.visible_name }}</span>
       </div>
       <div class="flex gap-2">
         <form method="post" action="/admin/read-books/{{ rb.id }}/approve">
@@ -436,7 +436,7 @@
         {% if u.avatar_url %}
           <img src="{{ u.avatar_url }}" class="w-6 h-6 rounded-full" alt="" />
         {% endif %}
-        <a href="/admin/members/{{ u.id }}" class="font-medium text-forest-800 hover:underline">{{ u.name }}</a>
+        <a href="/admin/members/{{ u.id }}" class="font-medium text-forest-800 hover:underline">{{ u.visible_name }}</a>
         <span class="text-forest-300 text-xs">{{ u.email }}</span>
         {% if u.is_admin %}<span class="text-xs bg-forest-100 text-forest-600 rounded px-1.5 py-0.5 font-semibold">Admin</span>{% endif %}
         {% if not u.google_id %}<span class="text-xs bg-amber-100 text-amber-600 rounded px-1.5 py-0.5">Pending login</span>{% endif %}
@@ -449,7 +449,7 @@
           </button>
         </form>
         <form method="post" action="/admin/users/{{ u.id }}/delete"
-              onsubmit="return confirm('Delete {{ u.name }}? This removes all their votes and submissions.')">
+              onsubmit="return confirm('Delete {{ u.visible_name }}? This removes all their votes and submissions.')">
           <button class="text-red-400 hover:text-red-600 text-xs font-medium">Delete</button>
         </form>
       </div>
