@@ -5,6 +5,8 @@ from sqlalchemy import select
 
 from app.models import Book, Season, SeasonParticipant, SeasonState
 
+from .conftest import make_client
+
 # ---------------------------------------------------------------------------
 # Helpers / local fixtures
 # ---------------------------------------------------------------------------
@@ -193,3 +195,72 @@ async def test_admin_remove_advances_season(
 
     await db.refresh(season)
     assert season.state == SeasonState.ranking
+
+
+# ---------------------------------------------------------------------------
+# Spectator mode (opted-out user sees read-only pages)
+# ---------------------------------------------------------------------------
+
+
+async def test_spectator_sees_banner_on_submit_page(
+    engine, db, test_user, test_admin, active_season
+):
+    """An opted-out user sees the spectator banner instead of the submission form."""
+    await db.execute(
+        select(SeasonParticipant).where(
+            SeasonParticipant.season_id == active_season.id,
+            SeasonParticipant.user_id == test_user.id,
+        )
+    )
+    from app import crud
+
+    await crud.remove_participant(db, active_season.id, test_user.id)
+
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/submit")
+    assert resp.status_code == 200
+    assert "spectating" in resp.text.lower()
+    assert "Submit Book" not in resp.text
+
+
+async def test_spectator_cannot_post_submission(engine, db, test_user, test_admin, active_season):
+    """An opted-out user's POST to /submit is rejected."""
+    from app import crud
+
+    await crud.remove_participant(db, active_season.id, test_user.id)
+
+    async with make_client(engine, test_user) as client:
+        resp = await client.post(
+            "/submit",
+            data={"title": "Sneaky Book", "author": "Hacker", "page_count": 100},
+        )
+    assert resp.status_code == 302
+
+    result = await db.execute(select(Book).where(Book.title == "Sneaky Book"))
+    assert result.scalar_one_or_none() is None
+
+
+async def test_spectator_can_still_see_submissions(
+    engine, db, test_user, test_admin, active_season
+):
+    """An opted-out user can see others' submissions on the submit page."""
+    from app import crud
+
+    # Admin submits a book
+    db.add(
+        Book(
+            title="Admin Book",
+            author="Admin",
+            page_count=200,
+            submitter_id=test_admin.id,
+            season_id=active_season.id,
+        )
+    )
+    await db.commit()
+
+    await crud.remove_participant(db, active_season.id, test_user.id)
+
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/submit")
+    assert resp.status_code == 200
+    assert "Admin Book" in resp.text

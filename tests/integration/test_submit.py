@@ -1,6 +1,8 @@
 """Integration tests for the book submission flow."""
 
-from app.models import Book, ReadBook
+from app.models import Book, ReadBook, Season, SeasonParticipant, SeasonState
+
+from .conftest import make_client
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -96,3 +98,116 @@ async def test_submit_season_advances_to_ranking(client_as_admin, active_season,
     # /ranking is now accessible
     ranking_page = await client_as_admin.get("/ranking")
     assert ranking_page.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Past picks (resubmit)
+# ---------------------------------------------------------------------------
+
+
+async def test_submit_page_shows_past_picks(engine, db, test_user, test_admin):
+    """Books submitted in a prior season appear as clickable past picks."""
+    # Create a completed past season with a submission
+    old_season = Season(name="Old Season", state=SeasonState.complete, page_limit=400)
+    db.add(old_season)
+    await db.flush()
+    db.add(
+        Book(
+            title="My Old Fave",
+            author="Past Author",
+            page_count=250,
+            submitter_id=test_user.id,
+            season_id=old_season.id,
+        )
+    )
+    await db.commit()
+
+    # Create a current season
+    new_season = Season(name="New Season", state=SeasonState.submit, page_limit=400)
+    db.add(new_season)
+    await db.flush()
+    db.add(SeasonParticipant(season_id=new_season.id, user_id=test_user.id))
+    db.add(SeasonParticipant(season_id=new_season.id, user_id=test_admin.id))
+    await db.commit()
+
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/submit")
+
+    assert resp.status_code == 200
+    assert "Your past picks" in resp.text
+    assert "My Old Fave" in resp.text
+    assert "Past Author" in resp.text
+
+
+async def test_past_picks_excludes_read_books(engine, db, test_user, test_admin):
+    """Books in the read_books table (already read) don't appear as past picks."""
+    old_season = Season(name="Old Season", state=SeasonState.complete, page_limit=400)
+    db.add(old_season)
+    await db.flush()
+    db.add(
+        Book(
+            title="Already Read Book",
+            author="Read Author",
+            page_count=300,
+            submitter_id=test_user.id,
+            season_id=old_season.id,
+        )
+    )
+    # Mark it as read
+    db.add(
+        ReadBook(title="Already Read Book", author="Read Author", won=False, added_by=test_admin.id)
+    )
+    await db.commit()
+
+    new_season = Season(name="New Season", state=SeasonState.submit, page_limit=400)
+    db.add(new_season)
+    await db.flush()
+    db.add(SeasonParticipant(season_id=new_season.id, user_id=test_user.id))
+    db.add(SeasonParticipant(season_id=new_season.id, user_id=test_admin.id))
+    await db.commit()
+
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/submit")
+
+    assert resp.status_code == 200
+    assert "Already Read Book" not in resp.text
+
+
+async def test_past_picks_hidden_after_submission(engine, db, test_user, test_admin):
+    """Once the user has submitted, past picks section is not shown."""
+    old_season = Season(name="Old Season", state=SeasonState.complete, page_limit=400)
+    db.add(old_season)
+    await db.flush()
+    db.add(
+        Book(
+            title="Old Pick",
+            author="Old Author",
+            page_count=200,
+            submitter_id=test_user.id,
+            season_id=old_season.id,
+        )
+    )
+    await db.commit()
+
+    new_season = Season(name="New Season", state=SeasonState.submit, page_limit=400)
+    db.add(new_season)
+    await db.flush()
+    db.add(SeasonParticipant(season_id=new_season.id, user_id=test_user.id))
+    db.add(SeasonParticipant(season_id=new_season.id, user_id=test_admin.id))
+    # User already submitted this season
+    db.add(
+        Book(
+            title="New Pick",
+            author="New Author",
+            page_count=300,
+            submitter_id=test_user.id,
+            season_id=new_season.id,
+        )
+    )
+    await db.commit()
+
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/submit")
+
+    assert resp.status_code == 200
+    assert "Your past picks" not in resp.text

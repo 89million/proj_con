@@ -951,6 +951,32 @@ async def get_books_by_user(db: AsyncSession, user_id: int) -> list[Book]:
     return list(result.scalars().all())
 
 
+async def get_resubmittable_books(
+    db: AsyncSession, user_id: int, current_season_id: int
+) -> list[Book]:
+    """Past submissions by this user that aren't blocked (not in read_books table)."""
+    read_books = await get_all_read_books(db)
+    blocked_titles = {(rb.title.lower(), rb.author.lower()) for rb in read_books}
+
+    result = await db.execute(
+        select(Book)
+        .where(Book.submitter_id == user_id, Book.season_id != current_season_id)
+        .order_by(Book.submitted_at.desc())
+    )
+    books = list(result.scalars().all())
+
+    # Dedupe by title+author (keep most recent) and exclude blocked
+    seen: set[tuple[str, str]] = set()
+    resubmittable = []
+    for book in books:
+        key = (book.title.lower(), book.author.lower())
+        if key in seen or key in blocked_titles:
+            continue
+        seen.add(key)
+        resubmittable.append(book)
+    return resubmittable
+
+
 async def get_season_count_for_user(db: AsyncSession, user_id: int) -> int:
     result = await db.execute(
         select(func.count())

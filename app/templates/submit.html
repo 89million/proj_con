@@ -14,7 +14,14 @@
   {% include "partials/waiting_on.html" %}
 </div>
 
-{% if my_book %}
+{% if is_spectator is defined and is_spectator %}
+  <!-- Spectator mode -->
+  <div class="mt-6 p-4 bg-sound-50 border border-sound-200 rounded-xl text-center">
+    <p class="text-sound-600 font-semibold mb-1">You're spectating this season</p>
+    <p class="text-sound-400 text-sm">You opted out of this season but can still follow along below.</p>
+  </div>
+
+{% elif my_book %}
   <!-- Already submitted -->
   <div class="mt-6 p-4 bg-forest-50 border border-forest-200 rounded-xl">
     <p class="text-forest-600 font-semibold mb-1">You submitted:</p>
@@ -88,6 +95,26 @@
       Submit Book
     </button>
   </form>
+
+  {% if past_picks is defined and past_picks %}
+  <div class="mt-6">
+    <h2 class="text-sm font-semibold text-forest-500 mb-2">Your past picks</h2>
+    <p class="text-xs text-forest-300 mb-2">Tap to fill the form above</p>
+    <ul class="space-y-1.5" id="past-picks-list">
+      {% for book in past_picks %}
+      <li class="bg-white border border-forest-100 rounded-lg px-3 py-2 shadow-sm cursor-pointer hover:border-forest-300 hover:bg-forest-50/50 transition"
+          data-title="{{ book.title }}"
+          data-author="{{ book.author }}"
+          data-pages="{{ book.page_count }}"
+          data-description="{{ book.description or '' }}">
+        <span class="font-medium text-forest-700 text-sm">{{ book.title }}</span>
+        <span class="text-forest-400 text-xs">by {{ book.author }}</span>
+        <span class="text-forest-300 text-xs">({{ book.page_count }}pp)</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
 
   <div class="mt-4 text-center">
     <form method="post" action="/submit/opt-out"
@@ -171,6 +198,24 @@
       suggestions.classList.add('hidden');
     }
   });
+
+  // Past picks — click to fill form
+  const pastPicks = document.getElementById('past-picks-list');
+  if (pastPicks) {
+    pastPicks.addEventListener('click', function(e) {
+      const li = e.target.closest('li');
+      if (!li) return;
+      document.getElementById('title').value = li.dataset.title;
+      document.getElementById('author').value = li.dataset.author;
+      document.getElementById('page_count').value = li.dataset.pages;
+      const desc = document.getElementById('description');
+      if (desc && li.dataset.description) desc.value = li.dataset.description;
+      // Scroll to the form
+      document.getElementById('title').focus();
+      li.classList.add('ring-2', 'ring-forest-400');
+      setTimeout(() => li.classList.remove('ring-2', 'ring-forest-400'), 600);
+    });
+  }
 })();
 </script>
 

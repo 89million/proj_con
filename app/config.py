@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     app_base_url: str = "http://localhost:8000"
     allowed_emails: str = ""  # comma-separated; empty = allow all (dev only)
     gemini_api_key: str = ""
+    notifications_enabled: bool = True
     discord_webhook_url: str = ""
     resend_api_key: str = ""
     resend_from_email: str = "thehereandnow@stumblingbookclub.com"

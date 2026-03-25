@@ -5,6 +5,13 @@
 <h1 class="text-2xl font-bold text-forest-700 mb-1">Tournament Bracket</h1>
 <p class="text-forest-400 text-sm mb-6">Season: <strong>{{ season.name }}</strong> · Now voting: <strong>{{ round_names.get(current_round, 'Done') }}</strong></p>
 
+{% if is_spectator is defined and is_spectator %}
+  <div class="mb-4 p-4 bg-sound-50 border border-sound-200 rounded-xl text-center">
+    <p class="text-sound-600 font-semibold mb-1">You're spectating this season</p>
+    <p class="text-sound-400 text-sm">You opted out but can still follow the bracket.</p>
+  </div>
+{% endif %}
+
 <!-- Peer pressure widget -->
 <div
   hx-get="/partials/waiting-on"
@@ -43,7 +50,7 @@
       {% if matchup.book_a_id != matchup.book_b_id %}
       {% set user_pick = user_votes.get(matchup.id) %}
       {% set is_current = round_num == current_round %}
-      {% set can_vote = is_current and not user_pick and not matchup.winner_id %}
+      {% set can_vote = is_current and not user_pick and not matchup.winner_id and not (is_spectator is defined and is_spectator) %}
       {% if can_vote %}{% set ns.has_votable = true %}{% endif %}
 
       <div class="bg-white border border-forest-100 rounded-xl p-4 shadow-sm matchup-card"

@@ -15,7 +15,30 @@
   {% include "partials/waiting_on.html" %}
 </div>
 
-{% if my_votes %}
+{% if is_spectator is defined and is_spectator %}
+  <!-- Spectator mode -->
+  <div class="mt-6 p-4 bg-sound-50 border border-sound-200 rounded-xl text-center">
+    <p class="text-sound-600 font-semibold mb-1">You're spectating this season</p>
+    <p class="text-sound-400 text-sm">You opted out but can still see the books being ranked.</p>
+  </div>
+
+  <div class="mt-6">
+    <h2 class="text-sm font-semibold text-forest-500 mb-2">Books in the running</h2>
+    <ul class="space-y-2">
+      {% for book in books %}
+        <li class="bg-white border border-forest-100 rounded-lg px-4 py-3 shadow-sm">
+          <span class="font-medium text-forest-800">{{ book.title }}</span>
+          <span class="text-forest-400 text-sm"> — {{ book.author }}</span>
+          <span class="text-forest-300 text-xs ml-1">({{ book.page_count }}pp)</span>
+          {% if book.description %}
+          <p class="text-forest-400 text-xs italic mt-0.5">{{ book.description }}</p>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+{% elif my_votes %}
   <!-- Already ranked -->
   <div class="mt-6 p-4 bg-forest-50 border border-forest-200 rounded-xl">
     <p class="text-forest-600 font-semibold mb-3">Your ranking:</p>

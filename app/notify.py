@@ -48,5 +48,8 @@ async def notify_all(
     emails: list[str], discord_msg: str, email_subject: str, email_body: str
 ) -> None:
     """Send both Discord and email notifications."""
+    if not settings.notifications_enabled:
+        logger.info("Notifications disabled — skipping: %s", discord_msg[:80])
+        return
     await send_discord(discord_msg)
     await send_email(emails, email_subject, email_body)

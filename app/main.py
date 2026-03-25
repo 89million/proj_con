@@ -246,9 +246,15 @@ async def submit_page(
     if season is None or season.state != SeasonState.submit:
         return RedirectResponse("/", status_code=302)
 
+    is_spectator = not await crud.is_participant(db, season.id, user.id)
     my_book = await crud.get_book_submitted_by_user(db, user.id, season.id)
     waiting_on = await crud.users_who_havent_submitted(db, season.id)
     all_submissions = await crud.get_books_for_season(db, season.id)
+    past_picks = (
+        await crud.get_resubmittable_books(db, user.id, season.id)
+        if not my_book and not is_spectator
+        else []
+    )
 
     return templates.TemplateResponse(
         "submit.html",
@@ -259,6 +265,8 @@ async def submit_page(
             "my_book": my_book,
             "waiting_on": waiting_on,
             "all_submissions": all_submissions,
+            "past_picks": past_picks,
+            "is_spectator": is_spectator,
         },
     )
 
@@ -276,6 +284,9 @@ async def submit_book(
     season = await crud.get_active_season(db)
     if season is None or season.state != SeasonState.submit:
         return RedirectResponse("/", status_code=302)
+
+    if not await crud.is_participant(db, season.id, user.id):
+        return RedirectResponse("/submit", status_code=302)
 
     errors = []
 
@@ -362,6 +373,7 @@ async def ranking_page(
     if season is None or season.state != SeasonState.ranking:
         return RedirectResponse("/", status_code=302)
 
+    is_spectator = not await crud.is_participant(db, season.id, user.id)
     books = await crud.get_books_for_season(db, season.id)
     my_votes = await crud.get_borda_votes_for_user(db, user.id, season.id)
     waiting_on = await crud.users_who_havent_ranked(db, season.id)
@@ -382,6 +394,7 @@ async def ranking_page(
             "books": ranked_books,
             "my_votes": my_votes,
             "waiting_on": waiting_on,
+            "is_spectator": is_spectator,
         },
     )
 
@@ -395,6 +408,9 @@ async def submit_ranking(
     season = await crud.get_active_season(db)
     if season is None or season.state != SeasonState.ranking:
         return RedirectResponse("/", status_code=302)
+
+    if not await crud.is_participant(db, season.id, user.id):
+        return RedirectResponse("/ranking", status_code=302)
 
     # Already ranked?
     existing = await crud.get_borda_votes_for_user(db, user.id, season.id)
@@ -447,6 +463,7 @@ async def bracket_page(
     # rebuild the missing next round.
     await state.maybe_advance_bracket_round(db, season)
 
+    is_spectator = not await crud.is_participant(db, season.id, user.id)
     current_round = await crud.get_current_bracket_round(db, season.id)
     all_matchups = await crud.get_matchups_for_season(db, season.id)
     seeds = await crud.get_seeds_for_season(db, season.id)
@@ -454,10 +471,11 @@ async def bracket_page(
 
     # Which matchups has this user voted on?
     user_votes: dict[int, int] = {}  # {matchup_id: book_id}
-    for matchup in all_matchups:
-        vote = await crud.get_bracket_vote(db, user.id, matchup.id)
-        if vote:
-            user_votes[matchup.id] = vote.book_id
+    if not is_spectator:
+        for matchup in all_matchups:
+            vote = await crud.get_bracket_vote(db, user.id, matchup.id)
+            if vote:
+                user_votes[matchup.id] = vote.book_id
 
     n_books = len(seeds)
     total_rounds = _total_rounds_for_books(n_books)
@@ -485,6 +503,7 @@ async def bracket_page(
             "total_rounds": total_rounds,
             "prior_nominations": prior_nominations,
             "matchup_tiebreakers": matchup_tiebreakers,
+            "is_spectator": is_spectator,
         },
     )
 
@@ -499,6 +518,9 @@ async def bracket_vote(
     season = await crud.get_active_season(db)
     if season is None or season.state != SeasonState.bracket:
         return RedirectResponse("/", status_code=302)
+
+    if not await crud.is_participant(db, season.id, user.id):
+        return RedirectResponse("/bracket", status_code=302)
 
     matchup = await crud.get_matchup_by_id(db, matchup_id)
     if matchup is None or matchup.season_id != season.id:
