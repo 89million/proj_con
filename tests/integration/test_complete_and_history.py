@@ -429,3 +429,19 @@ async def test_history_drilldown_no_tiebreaker_when_clear_winner(
     # 2-0 vote — no bracket tiebreaker note should appear
     assert "earliest vote" not in resp.text.lower()
     assert "tie — decided by" not in resp.text.lower()
+
+
+async def test_history_drilldown_shows_bracket_overview(
+    engine, test_user, complete_season_with_seeds
+):
+    """The history page includes the bracket overview diagram container and JS data."""
+    season, book1, book2 = complete_season_with_seeds
+    async with make_client(engine, test_user) as client:
+        resp = await client.get(f"/history/{season.id}")
+    assert resp.status_code == 200
+    assert "Bracket Overview" in resp.text
+    assert 'id="bracket-overview"' in resp.text
+    # JS matchup data is embedded
+    assert book1.title in resp.text
+    assert book2.title in resp.text
+    assert "totalRounds" in resp.text

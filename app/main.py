@@ -683,6 +683,7 @@ async def history_season_page(
             "round_names": round_names,
             "borda_scores": borda_scores,
             "prior_nominations": prior_nominations,
+            "total_rounds": total_rounds,
             "matchup_tiebreakers": matchup_ties,
             "seed_tiebreakers": seed_ties,
         },

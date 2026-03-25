@@ -73,6 +73,59 @@ async def test_submit_idea_cap_at_3(engine, db, test_user, monkeypatch):
     assert len(result.scalars().all()) == 3
 
 
+async def test_submit_idea_cap_excludes_done_and_wont_do(engine, db, test_user, monkeypatch):
+    """Ideas marked done or wont_do don't count against the 3-idea cap."""
+    from app import crud
+
+    monkeypatch.setattr("app.main.settings.gemini_api_key", "")
+
+    # Create 3 ideas, then close 2
+    for i in range(3):
+        await crud.create_idea(db, test_user.id, f"Old Idea {i}", f"Desc {i}", None)
+
+    ideas = (
+        (await db.execute(select(FeatureIdea).where(FeatureIdea.author_id == test_user.id)))
+        .scalars()
+        .all()
+    )
+    await crud.update_idea_status(db, ideas[0].id, IdeaStatus.done, None)
+    await crud.update_idea_status(db, ideas[1].id, IdeaStatus.wont_do, None)
+
+    # Now only 1 active idea — user should be able to submit more
+    async with make_client(engine, test_user) as client:
+        resp = await client.post(
+            "/ideas",
+            data={"title": "Fresh Idea", "description": "Brand new"},
+        )
+
+    assert resp.status_code == 302
+    result = await db.execute(select(FeatureIdea).where(FeatureIdea.title == "Fresh Idea"))
+    assert result.scalar_one() is not None
+
+
+async def test_submit_duplicate_idea_blocked(engine, db, test_user, monkeypatch):
+    """Submitting an idea with the same title as an existing one is silently ignored."""
+    monkeypatch.setattr("app.main.settings.gemini_api_key", "")
+
+    async with make_client(engine, test_user) as client:
+        await client.post(
+            "/ideas",
+            data={"title": "Unique Idea", "description": "First submission"},
+        )
+        # Submit again with same title
+        await client.post(
+            "/ideas",
+            data={"title": "Unique Idea", "description": "Duplicate submission"},
+        )
+
+    result = await db.execute(
+        select(FeatureIdea).where(
+            FeatureIdea.author_id == test_user.id, FeatureIdea.title == "Unique Idea"
+        )
+    )
+    assert len(result.scalars().all()) == 1
+
+
 async def test_upvote_toggle(engine, db, test_user, test_admin, monkeypatch):
     """First upvote adds, second removes."""
     from app import crud

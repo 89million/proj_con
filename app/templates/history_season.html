@@ -16,6 +16,14 @@
   </div>
 {% endif %}
 
+<!-- Bracket overview diagram -->
+{% if matchups %}
+  <section class="mb-8">
+    <h2 class="text-base font-semibold text-forest-600 mb-1">Bracket Overview</h2>
+    {% include "partials/bracket_overview.html" %}
+  </section>
+{% endif %}
+
 <!-- Borda seeds -->
 {% if seeds %}
   <section class="mb-8">
