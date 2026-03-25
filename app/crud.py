@@ -859,10 +859,26 @@ async def get_all_ideas(db: AsyncSession) -> list[FeatureIdea]:
 
 
 async def get_active_idea_count_for_user(db: AsyncSession, user_id: int) -> int:
+    """Count only proposed/in-progress ideas against the per-user quota."""
     result = await db.execute(
-        select(func.count()).select_from(FeatureIdea).where(FeatureIdea.author_id == user_id)
+        select(func.count())
+        .select_from(FeatureIdea)
+        .where(
+            FeatureIdea.author_id == user_id,
+            FeatureIdea.status.in_([IdeaStatus.proposed, IdeaStatus.in_progress]),
+        )
     )
     return result.scalar_one()
+
+
+async def has_duplicate_idea(db: AsyncSession, author_id: int, title: str) -> bool:
+    """Check if the user already submitted an idea with this exact title."""
+    result = await db.execute(
+        select(func.count())
+        .select_from(FeatureIdea)
+        .where(FeatureIdea.author_id == author_id, FeatureIdea.title == title)
+    )
+    return result.scalar_one() > 0
 
 
 async def create_idea(

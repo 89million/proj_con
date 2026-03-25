@@ -1232,6 +1232,9 @@ async def submit_idea(
     if count >= 3:
         return RedirectResponse("/ideas", status_code=302)
 
+    if await crud.has_duplicate_idea(db, user.id, title):
+        return RedirectResponse("/ideas", status_code=302)
+
     complexity = None
     try:
         from google import genai as google_genai
