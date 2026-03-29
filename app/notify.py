@@ -53,3 +53,27 @@ async def notify_all(
         return
     await send_discord(discord_msg)
     await send_email(emails, email_subject, email_body)
+
+
+async def send_nudge(
+    straggler_names: list[str],
+    straggler_emails: list[str],
+    season_name: str,
+    phase: str,
+    app_url: str,
+) -> None:
+    """Send reminder notifications to stragglers for the current phase."""
+    if not straggler_names:
+        return
+    names_str = ", ".join(straggler_names)
+    discord_msg = (
+        f"⏰ **{season_name}** — Waiting on {names_str} to {phase}. " f"Don't hold up the club!"
+    )
+    email_subject = f"{season_name} — Reminder to {phase}"
+    email_body = (
+        f"<h2>Hey, we're waiting on you!</h2>"
+        f"<p>The club is waiting for you to <strong>{phase}</strong> "
+        f"for {season_name}.</p>"
+        f'<p><a href="{app_url}">Head to the site →</a></p>'
+    )
+    await notify_all(straggler_emails, discord_msg, email_subject, email_body)

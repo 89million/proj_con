@@ -2,6 +2,8 @@
 
 import html as _html
 import math
+import statistics
+import time
 from datetime import datetime, timedelta
 
 import httpx
@@ -36,6 +38,28 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
 
 app = FastAPI(title="Stumbling Book Club")
 app.add_middleware(NoCacheMiddleware)
+
+# Deadline auto-advance: check once per 60 seconds on GET requests
+_last_deadline_check: float = 0.0
+
+
+@app.middleware("http")
+async def deadline_check_middleware(request, call_next):
+    global _last_deadline_check
+    response = await call_next(request)
+    if request.method == "GET":
+        now = time.monotonic()
+        if now - _last_deadline_check > 60:
+            _last_deadline_check = now
+            try:
+                async for db in get_db():
+                    season = await crud.get_active_season(db)
+                    if season and season.state not in (SeasonState.complete,):
+                        await state.check_deadline_and_advance(db, season)
+            except Exception:
+                pass  # fail silently — will retry next request
+    return response
+
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
@@ -231,6 +255,9 @@ async def auth_callback(
         return RedirectResponse("/?error=not_invited", status_code=302)
 
     user = await get_or_create_user(db, user_info)
+    if not user.is_active:
+        return RedirectResponse("/?error=deactivated", status_code=302)
+
     token = create_session_token(user.id)
 
     response = RedirectResponse("/", status_code=302)
@@ -276,6 +303,8 @@ async def submit_page(
         else []
     )
 
+    deadline = season.submit_deadline
+
     return templates.TemplateResponse(
         "submit.html",
         {
@@ -287,6 +316,8 @@ async def submit_page(
             "all_submissions": all_submissions,
             "past_picks": past_picks,
             "is_spectator": is_spectator,
+            "phase_deadline": deadline,
+            "phase_name": "Submissions",
         },
     )
 
@@ -405,6 +436,8 @@ async def ranking_page(
     else:
         ranked_books = books
 
+    deadline = season.ranking_deadline
+
     return templates.TemplateResponse(
         "ranking.html",
         {
@@ -415,6 +448,8 @@ async def ranking_page(
             "my_votes": my_votes,
             "waiting_on": waiting_on,
             "is_spectator": is_spectator,
+            "phase_deadline": deadline,
+            "phase_name": "Ranking",
         },
     )
 
@@ -509,6 +544,8 @@ async def bracket_page(
     prior_nominations = await crud.get_prior_nomination_counts(db, season.id)
     matchup_tiebreakers = {m.id: matchup_tiebreaker(m, prior_nominations) for m in all_matchups}
 
+    deadline = await state.get_current_deadline(db, season)
+
     return templates.TemplateResponse(
         "bracket.html",
         {
@@ -526,6 +563,8 @@ async def bracket_page(
             "prior_nominations": prior_nominations,
             "matchup_tiebreakers": matchup_tiebreakers,
             "is_spectator": is_spectator,
+            "phase_deadline": deadline,
+            "phase_name": "Bracket voting",
         },
     )
 
@@ -978,6 +1017,28 @@ async def admin_page(
             )
             god_mode["current_round"] = current_round
 
+    # Compute nudge cooldown status
+    nudge_cooldown_remaining = None
+    if active_season and active_season.last_nudge_at:
+        elapsed = datetime.utcnow() - active_season.last_nudge_at
+        cooldown = timedelta(minutes=settings.nudge_cooldown_minutes)
+        if elapsed < cooldown:
+            nudge_cooldown_remaining = int((cooldown - elapsed).total_seconds() / 60) + 1
+
+    # Current phase deadline
+    current_deadline = None
+    if active_season and active_season.state != SeasonState.complete:
+        current_deadline = await state.get_current_deadline(db, active_season)
+
+    # Waiting-on list (for nudge button display)
+    waiting_on: list = []
+    if active_season and active_season.state == SeasonState.submit:
+        waiting_on = god_mode.get("not_submitted", [])
+    elif active_season and active_season.state == SeasonState.ranking:
+        waiting_on = god_mode.get("not_ranked", [])
+    elif active_season and active_season.state == SeasonState.bracket:
+        waiting_on = god_mode.get("not_voted", [])
+
     return templates.TemplateResponse(
         "admin.html",
         {
@@ -995,6 +1056,12 @@ async def admin_page(
             "latest_complete": latest_complete,
             "has_meetup": has_meetup,
             "promotion_count": settings.promotion_count,
+            "nudge_cooldown_remaining": nudge_cooldown_remaining,
+            "waiting_on": waiting_on,
+            "current_deadline": current_deadline,
+            "default_submit_days": settings.default_submit_days,
+            "default_ranking_days": settings.default_ranking_days,
+            "default_bracket_round_hours": settings.default_bracket_round_hours,
         },
     )
 
@@ -1208,10 +1275,24 @@ async def god_mode_copy_submissions(
 async def create_season(
     name: str = Form(...),
     page_limit: int = Form(400),
+    submit_days: int = Form(0),
+    ranking_days: int = Form(0),
+    bracket_round_hours: int = Form(0),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_admin),
 ):
     season = await crud.create_season(db, name, page_limit)
+
+    # Set deadlines if provided
+    now = datetime.utcnow()
+    if submit_days > 0:
+        season.submit_deadline = now + timedelta(days=submit_days)
+    if ranking_days > 0:
+        season.ranking_deadline = now + timedelta(days=submit_days + ranking_days)
+    if bracket_round_hours > 0:
+        season.bracket_round_hours = bracket_round_hours
+    await db.commit()
+
     all_users = await crud.get_all_users(db)
     for u in all_users:
         await crud.add_participant(db, season.id, u.id)
@@ -1221,6 +1302,37 @@ async def create_season(
         prior = await crud.get_most_recent_complete_season(db)
         if prior:
             await crud.promote_books_to_season(db, prior.id, season.id, settings.promotion_count)
+
+    # Notify participants that the new season is open
+    participant_emails = [u.email for u in all_users if u.email and u.email_notifications]
+    deadline_note = ""
+    deadline_html = ""
+    if season.submit_deadline:
+        dl = season.submit_deadline.strftime("%a %b %d at %H:%M UTC")
+        deadline_note = (
+            f" Submit by {dl} — if everyone submits early we'll move on straight away, "
+            f"otherwise the season advances automatically at the deadline."
+        )
+        deadline_html = (
+            f"<p><strong>Deadline to submit:</strong> {dl}. "
+            f"If everyone submits before then we'll kick off ranking early — "
+            f"otherwise it starts automatically at the deadline.</p>"
+        )
+    await notify.notify_all(
+        emails=participant_emails,
+        discord_msg=(
+            f"📖 **{season.name}** is open for submissions! "
+            f"Head to the site and nominate your book.{deadline_note}"
+        ),
+        email_subject=f"{season.name} — Submit your book!",
+        email_body=(
+            f"<h2>{season.name} is open!</h2>"
+            f"<p>A new season has started. Head to the site and nominate the book "
+            f"you want the club to read.</p>"
+            f"{deadline_html}"
+            f'<p><a href="{settings.app_base_url}/submit">Submit your book →</a></p>'
+        ),
+    )
 
     return RedirectResponse("/admin", status_code=302)
 
@@ -1337,6 +1449,47 @@ async def force_advance_season(
     elif season.state == SeasonState.bracket:
         await crud.set_season_state(db, season, SeasonState.complete)
 
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/season/{season_id}/nudge", response_class=HTMLResponse)
+async def nudge_stragglers(
+    season_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    season = await crud.get_season_by_id(db, season_id)
+    if season is None or season.state == SeasonState.complete:
+        return RedirectResponse("/admin", status_code=302)
+
+    # Cooldown check
+    cooldown = timedelta(minutes=settings.nudge_cooldown_minutes)
+    if season.last_nudge_at and datetime.utcnow() - season.last_nudge_at < cooldown:
+        return RedirectResponse("/admin?nudge=cooldown", status_code=302)
+
+    # Get stragglers based on current phase
+    stragglers: list[User] = []
+    phase = ""
+    if season.state == SeasonState.submit:
+        stragglers = await crud.users_who_havent_submitted(db, season.id)
+        phase = "submit your book"
+    elif season.state == SeasonState.ranking:
+        stragglers = await crud.users_who_havent_ranked(db, season.id)
+        phase = "submit your ranking"
+    elif season.state == SeasonState.bracket:
+        current_round = await crud.get_current_bracket_round(db, season.id)
+        stragglers = await crud.users_who_havent_voted_round(db, season.id, current_round)
+        phase = "vote in the bracket"
+
+    if stragglers:
+        straggler_names = [u.visible_name for u in stragglers]
+        straggler_emails = [u.email for u in stragglers if u.email and u.email_notifications]
+        await notify.send_nudge(
+            straggler_names, straggler_emails, season.name, phase, settings.app_base_url
+        )
+
+    season.last_nudge_at = datetime.utcnow()
+    await db.commit()
     return RedirectResponse("/admin", status_code=302)
 
 
@@ -1591,6 +1744,20 @@ async def save_settings(
     return RedirectResponse("/settings?saved=1", status_code=302)
 
 
+@app.post("/settings/delete-account")
+async def delete_account(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    db_user = await db.get(User, user.id)
+    db_user.is_active = False
+    db_user.email_notifications = False
+    await db.commit()
+    response = RedirectResponse("/?account_deleted=1", status_code=302)
+    response.delete_cookie("session")
+    return response
+
+
 # ---------------------------------------------------------------------------
 # Feature ideas
 # ---------------------------------------------------------------------------
@@ -1745,5 +1912,210 @@ async def admin_member_stats(
             "correct_votes": correct,
             "total_votes": total,
             "books_with_status": books_with_status,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Season Recap
+# ---------------------------------------------------------------------------
+
+
+@app.get("/season/{season_id}/recap", response_class=HTMLResponse)
+async def season_recap_page(
+    season_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    season = await crud.get_season_by_id(db, season_id)
+    if season is None or season.state != SeasonState.complete:
+        raise HTTPException(status_code=404, detail="Season not found.")
+
+    books = await crud.get_books_for_season(db, season_id)
+    seeds = await crud.get_seeds_for_season(db, season_id)
+    matchups = await crud.get_matchups_for_season(db, season_id)
+    winner_book = await crud.get_winner_book_for_season(db, season_id)
+    all_borda_votes = await crud.get_all_borda_votes_for_season(db, season_id)
+    participants = await crud.get_participants_for_season(db, season_id)
+
+    book_map = {b.id: b for b in books}
+    seed_map = {s.book_id: s.seed for s in seeds}
+
+    stats: list[dict] = []
+
+    # --- Closest matchup ---
+    real_matchups = [m for m in matchups if m.book_a_id != m.book_b_id and m.winner_id]
+    if real_matchups:
+        closest = None
+        closest_margin = float("inf")
+        for m in real_matchups:
+            votes_a = sum(1 for v in m.votes if v.book_id == m.book_a_id)
+            votes_b = sum(1 for v in m.votes if v.book_id == m.book_b_id)
+            margin = abs(votes_a - votes_b)
+            if margin < closest_margin:
+                closest_margin = margin
+                closest = m
+        if closest:
+            va = sum(1 for v in closest.votes if v.book_id == closest.book_a_id)
+            vb = sum(1 for v in closest.votes if v.book_id == closest.book_b_id)
+            winner_title = (
+                book_map[closest.winner_id].title if closest.winner_id in book_map else "?"
+            )
+            loser_id = (
+                closest.book_b_id if closest.winner_id == closest.book_a_id else closest.book_a_id
+            )
+            loser_title = book_map[loser_id].title if loser_id in book_map else "?"
+            stats.append(
+                {
+                    "emoji": "🔥",
+                    "label": "Closest Matchup",
+                    "value": f"{winner_title} vs {loser_title}",
+                    "detail": f"{va}–{vb}" + (" (decided by tiebreaker!)" if va == vb else ""),
+                }
+            )
+
+    # --- Biggest upset ---
+    if real_matchups and seed_map:
+        biggest_upset = None
+        biggest_gap = 0
+        for m in real_matchups:
+            if m.winner_id and m.winner_id in seed_map:
+                loser_id = m.book_b_id if m.winner_id == m.book_a_id else m.book_a_id
+                if loser_id in seed_map:
+                    winner_seed = seed_map[m.winner_id]
+                    loser_seed = seed_map[loser_id]
+                    if winner_seed > loser_seed:  # higher seed number = worse seed = upset
+                        gap = winner_seed - loser_seed
+                        if gap > biggest_gap:
+                            biggest_gap = gap
+                            biggest_upset = m
+        if biggest_upset and biggest_upset.winner_id:
+            u_loser_id = (
+                biggest_upset.book_b_id
+                if biggest_upset.winner_id == biggest_upset.book_a_id
+                else biggest_upset.book_a_id
+            )
+            stats.append(
+                {
+                    "emoji": "😱",
+                    "label": "Biggest Upset",
+                    "value": (
+                        f"#{seed_map[biggest_upset.winner_id]} "
+                        f"{book_map[biggest_upset.winner_id].title} beat "
+                        f"#{seed_map[u_loser_id]} {book_map[u_loser_id].title}"
+                    ),
+                    "detail": f"Seed gap: {biggest_gap}",
+                }
+            )
+
+    # --- Most controversial book (highest Borda rank variance) ---
+    if all_borda_votes:
+        book_ranks: dict[int, list[int]] = {}
+        for v in all_borda_votes:
+            book_ranks.setdefault(v.book_id, []).append(v.rank)
+        most_controversial = None
+        highest_var = 0
+        for bid, ranks in book_ranks.items():
+            if len(ranks) >= 2:
+                var = statistics.variance(ranks)
+                if var > highest_var:
+                    highest_var = var
+                    most_controversial = bid
+        if most_controversial and most_controversial in book_map:
+            ranks = book_ranks[most_controversial]
+            stats.append(
+                {
+                    "emoji": "🤔",
+                    "label": "Most Controversial",
+                    "value": book_map[most_controversial].title,
+                    "detail": f"Ranked #{min(ranks)} to #{max(ranks)} across voters",
+                }
+            )
+
+    # --- Cinderella story (advanced furthest relative to seed) ---
+    if real_matchups and seed_map:
+        # For each book, find the highest round they reached
+        book_max_round: dict[int, int] = {}
+        for m in matchups:
+            if m.book_a_id != m.book_b_id:
+                book_max_round[m.book_a_id] = max(book_max_round.get(m.book_a_id, 0), m.round)
+                book_max_round[m.book_b_id] = max(book_max_round.get(m.book_b_id, 0), m.round)
+        # Score = rounds advanced - expected rounds (lower seed = expected to advance more)
+        # Expected rounds for seed S out of N: roughly log2(N) - log2(S)
+        n_bracket = len(set(seed_map.keys()) & set(book_max_round.keys()))
+        best_overperformer = None
+        best_score = 0
+        if n_bracket >= 2:
+            for bid, max_rd in book_max_round.items():
+                if bid in seed_map and bid != (winner_book.id if winner_book else None):
+                    seed = seed_map[bid]
+                    # Higher seed number + more rounds advanced = better story
+                    score = max_rd * seed  # simple heuristic
+                    if score > best_score:
+                        best_score = score
+                        best_overperformer = bid
+        if best_overperformer and best_overperformer in book_map:
+            stats.append(
+                {
+                    "emoji": "🩰",
+                    "label": "Cinderella Story",
+                    "value": (
+                        f"#{seed_map[best_overperformer]} " f"{book_map[best_overperformer].title}"
+                    ),
+                    "detail": (
+                        f"Seed #{seed_map[best_overperformer]} made it "
+                        f"to round {book_max_round[best_overperformer]}"
+                    ),
+                }
+            )
+
+    # --- Participation stats ---
+    if participants and real_matchups:
+        total_p = len(participants)
+        rounds = sorted({m.round for m in real_matchups})
+        round_rates = []
+        for rd in rounds:
+            rd_matchups = [m for m in real_matchups if m.round == rd]
+            voters = {v.user_id for m in rd_matchups for v in m.votes}
+            rate = len(voters) / total_p * 100 if total_p else 0
+            round_rates.append(rate)
+        avg_rate = sum(round_rates) / len(round_rates) if round_rates else 0
+        stats.append(
+            {
+                "emoji": "📊",
+                "label": "Participation",
+                "value": f"{avg_rate:.0f}% average bracket turnout",
+                "detail": (
+                    f"{total_p} participants across {len(rounds)} "
+                    f"round{'s' if len(rounds) != 1 else ''}"
+                ),
+            }
+        )
+
+    # --- Season timeline ---
+    if season.created_at:
+        stats.append(
+            {
+                "emoji": "📅",
+                "label": "Season Timeline",
+                "value": (
+                    f"{season.created_at.strftime('%b %d')} — "
+                    f"{datetime.utcnow().strftime('%b %d, %Y')}"
+                ),
+                "detail": (
+                    f"{(datetime.utcnow() - season.created_at).days} " f"days from start to finish"
+                ),
+            }
+        )
+
+    return templates.TemplateResponse(
+        "recap.html",
+        {
+            "request": request,
+            "user": user,
+            "season": season,
+            "winner_book": winner_book,
+            "stats": stats,
         },
     )

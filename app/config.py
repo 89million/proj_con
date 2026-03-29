@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     meetup_default_day: str = "friday"
     meetup_default_time: str = "19:00"
     promotion_count: int = 2
+    default_submit_days: int = 7
+    default_ranking_days: int = 5
+    default_bracket_round_hours: int = 48
+    nudge_cooldown_minutes: int = 15
 
     def is_email_allowed(self, email: str) -> bool:
         if not self.allowed_emails.strip():

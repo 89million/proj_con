@@ -45,4 +45,26 @@
   </button>
 </form>
 
+<!-- Danger Zone -->
+<div class="mt-12 max-w-md border border-red-200 rounded-lg p-5">
+  <h2 class="text-sm font-semibold text-red-600 uppercase tracking-wide mb-1">Danger Zone</h2>
+  <p class="text-sm text-forest-500 mb-4">
+    Deactivating your account will remove you from future notifications and prevent you from
+    logging back in. Your history and votes are preserved.
+  </p>
+  <button
+    onclick="document.getElementById('delete-confirm').classList.remove('hidden'); this.classList.add('hidden');"
+    class="text-sm text-red-500 border border-red-300 px-4 py-1.5 rounded-lg hover:bg-red-50 transition">
+    Deactivate my account
+  </button>
+  <div id="delete-confirm" class="hidden">
+    <p class="text-sm font-medium text-red-600 mb-3">Are you sure? This cannot be undone by you — contact the admin to reactivate.</p>
+    <form method="post" action="/settings/delete-account">
+      <button type="submit" class="bg-red-600 text-white px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-red-500 transition">
+        Yes, deactivate my account
+      </button>
+    </form>
+  </div>
+</div>
+
 {% endblock %}

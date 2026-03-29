@@ -32,12 +32,32 @@
         · Page limit: {{ active_season.page_limit }}
       </p>
       {% if active_season.state.value != "complete" %}
-      <form method="post" action="/admin/season/{{ active_season.id }}/advance"
-            onsubmit="return confirm('Force-advance the season state? This skips all vote checks.')">
-        <button class="text-xs bg-amber-100 text-amber-700 border border-amber-300 px-3 py-1.5 rounded-lg font-semibold hover:bg-amber-200 transition">
-          Force advance state
-        </button>
-      </form>
+      <div class="flex flex-wrap gap-2">
+        <form method="post" action="/admin/season/{{ active_season.id }}/advance"
+              onsubmit="return confirm('Force-advance the season state? This skips all vote checks.')">
+          <button class="text-xs bg-amber-100 text-amber-700 border border-amber-300 px-3 py-1.5 rounded-lg font-semibold hover:bg-amber-200 transition">
+            Force advance state
+          </button>
+        </form>
+        {% if waiting_on %}
+        <form method="post" action="/admin/season/{{ active_season.id }}/nudge"
+              onsubmit="return confirm('Send a reminder to {{ waiting_on|length }} straggler{{ 's' if waiting_on|length != 1 }}?')">
+          <button class="text-xs bg-sound-100 text-sound-700 border border-sound-300 px-3 py-1.5 rounded-lg font-semibold hover:bg-sound-200 transition {% if nudge_cooldown_remaining %}opacity-50 cursor-not-allowed{% endif %}"
+                  {% if nudge_cooldown_remaining %}disabled{% endif %}>
+            {% if nudge_cooldown_remaining %}
+              Nudged {{ nudge_cooldown_remaining }}m ago
+            {% else %}
+              Nudge {{ waiting_on|length }} straggler{{ 's' if waiting_on|length != 1 }}
+            {% endif %}
+          </button>
+        </form>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% if current_deadline %}
+      <p class="text-xs text-forest-400 mt-2">
+        Deadline: {{ current_deadline.strftime('%b %d at %H:%M UTC') }}
+      </p>
       {% endif %}
     </div>
 
@@ -333,19 +353,42 @@
 <!-- Start new season -->
 <section class="mb-8 bg-white border border-forest-100 rounded-xl p-5 shadow-sm">
   <h2 class="font-semibold text-forest-600 mb-3">Start a New Season</h2>
-  <form method="post" action="/admin/season" class="flex flex-col sm:flex-row gap-3">
-    <input
-      name="name" type="text" required
-      placeholder="Season name (e.g. Spring 2026)"
-      class="flex-1 border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900"
-    />
-    <div class="flex items-center gap-2">
-      <label class="text-sm text-forest-500" for="page_limit">Page limit</label>
+  <form method="post" action="/admin/season" class="space-y-3">
+    <div class="flex flex-col sm:flex-row gap-3">
       <input
-        id="page_limit" name="page_limit" type="number" value="400" min="1"
-        class="w-24 border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900"
+        name="name" type="text" required
+        placeholder="Season name (e.g. Spring 2026)"
+        class="flex-1 border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900"
       />
+      <div class="flex items-center gap-2">
+        <label class="text-sm text-forest-500" for="page_limit">Page limit</label>
+        <input
+          id="page_limit" name="page_limit" type="number" value="400" min="1"
+          class="w-24 border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900"
+        />
+      </div>
     </div>
+    <details class="text-sm">
+      <summary class="cursor-pointer text-forest-400 hover:text-forest-600 font-medium">Deadlines (optional)</summary>
+      <div class="mt-2 flex flex-wrap gap-3">
+        <div class="flex items-center gap-1">
+          <label class="text-xs text-forest-500">Submit days</label>
+          <input name="submit_days" type="number" value="{{ default_submit_days }}" min="0"
+            class="w-16 border border-forest-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+        </div>
+        <div class="flex items-center gap-1">
+          <label class="text-xs text-forest-500">Ranking days</label>
+          <input name="ranking_days" type="number" value="{{ default_ranking_days }}" min="0"
+            class="w-16 border border-forest-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+        </div>
+        <div class="flex items-center gap-1">
+          <label class="text-xs text-forest-500">Bracket hrs/round</label>
+          <input name="bracket_round_hours" type="number" value="{{ default_bracket_round_hours }}" min="0"
+            class="w-16 border border-forest-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+        </div>
+      </div>
+      <p class="text-xs text-forest-300 mt-1">Set any to 0 to disable that deadline. Phases auto-advance when deadlines pass.</p>
+    </details>
     <button class="bg-forest-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-500 transition">
       Create Season
     </button>

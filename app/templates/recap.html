@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ season.name }} Recap — Stumbling Book Club{% endblock %}
+{% block content %}
+
+<div class="mb-6 flex items-center justify-between">
+  <h1 class="font-serif text-3xl font-bold text-forest-700">{{ season.name }} Recap</h1>
+  <a href="/history/{{ season.id }}" class="text-forest-400 text-sm hover:underline">← Season details</a>
+</div>
+
+{% if winner_book %}
+<div class="bg-white border-2 border-forest-300 rounded-2xl px-8 py-6 shadow-md text-center mb-8">
+  <div class="text-4xl mb-2">🏆</div>
+  <p class="text-2xl font-bold text-forest-800">{{ winner_book.title }}</p>
+  <p class="text-forest-500 mt-1">by {{ winner_book.author }}</p>
+</div>
+{% endif %}
+
+{% if stats %}
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+  {% for stat in stats %}
+  <div class="bg-white border border-forest-100 rounded-xl p-5 shadow-sm">
+    <div class="text-2xl mb-2">{{ stat.emoji }}</div>
+    <h3 class="text-xs font-semibold text-forest-400 uppercase tracking-wide mb-1">{{ stat.label }}</h3>
+    <p class="text-forest-800 font-medium">{{ stat.value }}</p>
+    {% if stat.detail %}
+    <p class="text-forest-400 text-xs mt-1">{{ stat.detail }}</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="text-forest-400 text-center italic mt-8">Not enough data to generate a recap for this season.</p>
+{% endif %}
+
+{% endblock %}

@@ -39,29 +39,43 @@ async def _participant_emails(db: AsyncSession, season_id: int) -> list[str]:
     return [u.email for u in participants if u.email and u.email_notifications]
 
 
-async def maybe_advance_from_submit(db: AsyncSession, season: Season) -> bool:
-    """Advance submit → ranking when every participant has submitted."""
+async def maybe_advance_from_submit(
+    db: AsyncSession, season: Season, *, force: bool = False
+) -> bool:
+    """Advance submit → ranking when every participant has submitted (or forced)."""
     if season.state != SeasonState.submit:
         return False
 
     submissions = await crud.count_submissions(db, season.id)
     total_participants = await crud.count_participants(db, season.id)
 
-    if total_participants > 0 and submissions >= total_participants:
+    if force or (total_participants > 0 and submissions >= total_participants):
         await crud.set_season_state(db, season, SeasonState.ranking)
         emails = await _participant_emails(db, season.id)
         url = settings.app_base_url
+        deadline_note = ""
+        deadline_html = ""
+        if season.ranking_deadline:
+            dl = season.ranking_deadline.strftime("%a %b %d at %H:%M UTC")
+            deadline_note = f" Deadline to rank: {dl}."
+            deadline_html = (
+                f"<p><strong>Deadline:</strong> {dl}. "
+                f"If everyone ranks before then we'll move forward early — "
+                f"otherwise rankings are locked in automatically at the deadline.</p>"
+            )
         await notify.notify_all(
             emails=emails,
             discord_msg=(
                 f"📚 **{season.name}** — All books are in! "
                 f"Time to rank your favorites. Head to the site and submit your ranking."
+                f"{deadline_note}"
             ),
             email_subject=f"{season.name} — Time to rank!",
             email_body=(
                 f"<h2>All books are in for {season.name}!</h2>"
                 f"<p>Time to rank your favorites. The book with the most Borda points "
                 f"gets the top bracket seed.</p>"
+                f"{deadline_html}"
                 f'<p><a href="{url}/ranking">Submit your ranking →</a></p>'
             ),
         )
@@ -69,8 +83,10 @@ async def maybe_advance_from_submit(db: AsyncSession, season: Season) -> bool:
     return False
 
 
-async def maybe_advance_from_ranking(db: AsyncSession, season: Season) -> bool:
-    """Advance ranking → bracket when every participant has ranked.
+async def maybe_advance_from_ranking(
+    db: AsyncSession, season: Season, *, force: bool = False
+) -> bool:
+    """Advance ranking → bracket when every participant has ranked (or forced).
 
     Also computes Borda seeds and creates the first-round bracket matchups.
     """
@@ -80,7 +96,7 @@ async def maybe_advance_from_ranking(db: AsyncSession, season: Season) -> bool:
     total_participants = await crud.count_participants(db, season.id)
     voters = await crud.count_borda_voters(db, season.id)
 
-    if total_participants > 0 and voters >= total_participants:
+    if force or (total_participants > 0 and voters >= total_participants):
         books = await crud.get_books_for_season(db, season.id)
 
         # Need at least 2 books to run a bracket
@@ -106,17 +122,32 @@ async def maybe_advance_from_ranking(db: AsyncSession, season: Season) -> bool:
         await crud.set_season_state(db, season, SeasonState.bracket)
         emails = await _participant_emails(db, season.id)
         url = settings.app_base_url
+        bracket_deadline_note = ""
+        bracket_deadline_html = ""
+        if season.bracket_round_hours:
+            bracket_deadline_note = (
+                f" Each round closes {season.bracket_round_hours}h after the first vote is cast — "
+                f"vote early so you're not left out."
+            )
+            bracket_deadline_html = (
+                f"<p><strong>Round deadline:</strong> Each round closes "
+                f"{season.bracket_round_hours} hours after the first vote. "
+                f"If you don't vote before the round closes, your vote won't count — "
+                f"but if everyone votes early we move on straight away.</p>"
+            )
         await notify.notify_all(
             emails=emails,
             discord_msg=(
                 f"🏆 **{season.name}** — Rankings are locked in! "
                 f"The tournament bracket is live. Cast your first-round votes!"
+                f"{bracket_deadline_note}"
             ),
             email_subject=f"{season.name} — The bracket is live!",
             email_body=(
                 f"<h2>The tournament bracket for {season.name} is live!</h2>"
                 f"<p>Rankings are locked in and seeds have been assigned. "
                 f"Time to cast your first-round votes.</p>"
+                f"{bracket_deadline_html}"
                 f'<p><a href="{url}/bracket">Vote now →</a></p>'
             ),
         )
@@ -124,11 +155,14 @@ async def maybe_advance_from_ranking(db: AsyncSession, season: Season) -> bool:
     return False
 
 
-async def maybe_advance_bracket_round(db: AsyncSession, season: Season) -> bool:
+async def maybe_advance_bracket_round(
+    db: AsyncSession, season: Season, *, force: bool = False
+) -> bool:
     """Resolve the current bracket round if all participants have voted on real matchups.
 
     Byes (book_a == book_b) are already pre-resolved and don't require votes.
     When only 1 unique winner remains after resolving a round, the season is complete.
+    When force=True, resolves based on votes cast so far (deadline expiry).
     """
     if season.state != SeasonState.bracket:
         return False
@@ -158,7 +192,7 @@ async def maybe_advance_bracket_round(db: AsyncSession, season: Season) -> bool:
     if real_matchups:
         total_participants = await crud.count_participants(db, season.id)
         voters_done = await crud.count_bracket_voters_for_round(db, season.id, current_round)
-        if total_participants == 0 or voters_done < total_participants:
+        if not force and (total_participants == 0 or voters_done < total_participants):
             return False
 
         # Resolve winners for real matchups
@@ -228,19 +262,93 @@ async def maybe_advance_bracket_round(db: AsyncSession, season: Season) -> bool:
             season.id, matchups, current_round + 1
         )
         await crud.create_matchups(db, next_round_matchups)
+        round_deadline_note = ""
+        round_deadline_html = ""
+        if season.bracket_round_hours:
+            round_deadline_note = (
+                f" Round closes {season.bracket_round_hours}h after the first vote — "
+                f"vote early so you're not left out."
+            )
+            round_deadline_html = (
+                f"<p><strong>Heads up:</strong> This round closes "
+                f"{season.bracket_round_hours} hours after the first vote is cast. "
+                f"If you don't vote in time your vote won't count — "
+                f"but if everyone votes early we move on straight away.</p>"
+            )
         await notify.notify_all(
             emails=emails,
             discord_msg=(
                 f"⚔️ **{season.name}** — Round {current_round} is decided! "
-                f"The next round is now open for voting."
+                f"The next round is now open for voting.{round_deadline_note}"
             ),
             email_subject=f"{season.name} — Next round is live!",
             email_body=(
                 f"<h2>Round {current_round} is decided!</h2>"
                 f"<p>The next round of the {season.name} bracket is now open. "
                 f"Cast your votes!</p>"
+                f"{round_deadline_html}"
                 f'<p><a href="{url}/bracket">Vote now →</a></p>'
             ),
         )
 
     return True
+
+
+async def _get_bracket_round_deadline(db: AsyncSession, season: Season) -> datetime | None:
+    """Compute the deadline for the current bracket round, if bracket_round_hours is set."""
+    if not season.bracket_round_hours:
+        return None
+    current_round = await crud.get_current_bracket_round(db, season.id)
+    if current_round == 0:
+        return None
+    matchups = await crud.get_matchups_for_round(db, season.id, current_round)
+    if not matchups:
+        return None
+    # Use the earliest vote timestamp in this round, or fall back to now + hours
+    from sqlalchemy import select as sa_select
+
+    from app.models import BracketVote
+
+    result = await db.execute(
+        sa_select(BracketVote.voted_at)
+        .where(BracketVote.matchup_id.in_([m.id for m in matchups]))
+        .order_by(BracketVote.voted_at.asc())
+        .limit(1)
+    )
+    first_vote = result.scalar_one_or_none()
+    if first_vote:
+        return first_vote + timedelta(hours=season.bracket_round_hours)
+    # No votes yet — deadline starts from now
+    return datetime.utcnow() + timedelta(hours=season.bracket_round_hours)
+
+
+async def get_current_deadline(db: AsyncSession, season: Season) -> datetime | None:
+    """Return the active deadline for the season's current phase, or None."""
+    if season.state == SeasonState.submit:
+        return season.submit_deadline
+    if season.state == SeasonState.ranking:
+        return season.ranking_deadline
+    if season.state == SeasonState.bracket:
+        return await _get_bracket_round_deadline(db, season)
+    return None
+
+
+async def check_deadline_and_advance(db: AsyncSession, season: Season) -> bool:
+    """If the current phase deadline has passed, force-advance the season."""
+    now = datetime.utcnow()
+
+    if season.state == SeasonState.submit and season.submit_deadline:
+        if now >= season.submit_deadline:
+            return await maybe_advance_from_submit(db, season, force=True)
+
+    if season.state == SeasonState.ranking and season.ranking_deadline:
+        if now >= season.ranking_deadline:
+            return await maybe_advance_from_ranking(db, season, force=True)
+
+    if season.state == SeasonState.bracket and season.bracket_round_hours:
+        deadline = await _get_bracket_round_deadline(db, season)
+        if deadline and now >= deadline:
+            # Resolve based on votes cast so far — no random filler votes
+            return await maybe_advance_bracket_round(db, season, force=True)
+
+    return False

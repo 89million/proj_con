@@ -27,6 +27,16 @@
       Sorry, your account isn't on the invite list. Ask the admin to add you.
     </p>
     {% endif %}
+    {% if request.query_params.get('error') == 'deactivated' %}
+    <p class="mt-4 text-sound-500 text-sm font-medium">
+      This account has been deactivated. Contact the admin if you think this is a mistake.
+    </p>
+    {% endif %}
+    {% if request.query_params.get('account_deleted') == '1' %}
+    <p class="mt-4 text-forest-600 text-sm font-medium">
+      Your account has been deactivated. Thanks for being part of the club!
+    </p>
+    {% endif %}
   </div>
 </div>
 {% endblock %}
