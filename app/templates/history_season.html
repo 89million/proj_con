@@ -40,7 +40,8 @@
         </thead>
         <tbody class="divide-y divide-forest-50">
           {% for seed in seeds %}
-            <tr class="{% if seed.book.id == winner_book.id %}bg-forest-50{% endif %}">
+            {% set pf = book_playoff.get(seed.book.id) if book_playoff is defined else none %}
+            <tr class="{% if pf == 'winner' %}bg-emerald-50 border-l-4 border-l-emerald-700{% elif pf == 'final' %}bg-emerald-50/50 border-l-4 border-l-emerald-500{% elif pf == 'semi' %}border-l-4 border-l-amber-500{% elif pf == 'early' %}border-l-4 border-l-stone-400{% elif pf == 'relegated' %}bg-red-50/50 border-l-4 border-l-red-500{% endif %}">
               <td class="px-4 py-2 font-bold text-forest-600">#{{ seed.seed }}</td>
               <td class="px-4 py-2 font-medium text-forest-800">
                 {{ seed.book.title }}

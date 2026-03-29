@@ -307,6 +307,13 @@
         {% endfor %}
       </div>
 
+      <form method="post" action="/admin/god-mode/auto-vote" class="mt-4"
+            onsubmit="return confirm('Randomly vote for all remaining users this round?')">
+        <button type="submit" class="w-full bg-purple-600 text-white py-2 rounded-lg font-semibold hover:bg-purple-500 transition text-sm">
+          Auto-vote (random) for all remaining users
+        </button>
+      </form>
+
       <script>
       (function() {
         const userSelect = document.getElementById('gm-bracket-user');
@@ -343,7 +350,28 @@
       Create Season
     </button>
   </form>
+  {% if promotion_count > 0 %}
+  <p class="text-xs text-forest-400 mt-2">
+    Top {{ promotion_count }} book{{ 's' if promotion_count != 1 else '' }} from the last completed season will be auto-promoted.
+  </p>
+  {% endif %}
 </section>
+
+<!-- Create meetup poll -->
+{% if latest_complete and not has_meetup %}
+<section class="mb-8 bg-white border border-sound-200 rounded-xl p-5 shadow-sm">
+  <h2 class="font-semibold text-sound-600 mb-2">Meetup Poll</h2>
+  <p class="text-sm text-forest-500 mb-3">
+    <strong>{{ latest_complete.name }}</strong> has no meetup poll yet.
+    Create one to let members vote on when to meet.
+  </p>
+  <form method="post" action="/admin/create-meetup">
+    <button class="bg-sound-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-sound-500 transition">
+      Create Meetup Poll
+    </button>
+  </form>
+</section>
+{% endif %}
 
 <!-- Pending book suggestions -->
 {% if pending_read_books %}

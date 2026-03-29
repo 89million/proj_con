@@ -19,8 +19,11 @@
        class="inline-block bg-forest-600 text-white px-10 py-3.5 rounded-lg text-base font-semibold hover:bg-forest-500 transition shadow-lg">
       Sign in with Google
     </a>
+    <p class="mt-6">
+      <a href="/how-it-works" class="text-forest-500 text-sm hover:underline">How does it work? →</a>
+    </p>
     {% if request.query_params.get('error') == 'not_invited' %}
-    <p class="mt-6 text-sound-500 text-sm font-medium">
+    <p class="mt-4 text-sound-500 text-sm font-medium">
       Sorry, your account isn't on the invite list. Ask the admin to add you.
     </p>
     {% endif %}

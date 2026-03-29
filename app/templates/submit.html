@@ -136,6 +136,7 @@
       <div class="flex items-center gap-3">
         <div class="flex-1">
           <span class="font-medium text-forest-800">{{ book.title }}</span>
+          {% if book.promoted %}<span class="text-xs bg-sound-100 text-sound-600 px-1.5 py-0.5 rounded-full ml-1">promoted</span>{% endif %}
           <span class="text-forest-400 text-sm"> by {{ book.author }}</span>
           <span class="text-forest-300 text-xs ml-2">({{ book.page_count }}pp)</span>
         </div>

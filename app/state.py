@@ -1,10 +1,37 @@
 """State machine: check transition conditions and auto-advance seasons."""
 
+from datetime import datetime, timedelta
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import crud, notify, voting
 from app.config import settings
 from app.models import ReadBook, Season, SeasonState
+
+# Day-of-week name → weekday int (Monday=0)
+_WEEKDAY_MAP = {
+    "monday": 0,
+    "tuesday": 1,
+    "wednesday": 2,
+    "thursday": 3,
+    "friday": 4,
+    "saturday": 5,
+    "sunday": 6,
+}
+
+
+def _next_weekday_at(after: datetime, day: str, time_str: str) -> datetime:
+    """Find the first occurrence of `day` at `time_str` on or after `after`."""
+    target_wd = _WEEKDAY_MAP.get(day.lower(), 4)  # default Friday
+    hour, minute = (int(x) for x in time_str.split(":"))
+    current_wd = after.weekday()
+    days_ahead = (target_wd - current_wd) % 7
+    if days_ahead == 0 and after.hour >= hour:
+        days_ahead = 7
+    result = after.replace(hour=hour, minute=minute, second=0, microsecond=0) + timedelta(
+        days=days_ahead
+    )
+    return result
 
 
 async def _participant_emails(db: AsyncSession, season_id: int) -> list[str]:
@@ -66,7 +93,14 @@ async def maybe_advance_from_ranking(db: AsyncSession, season: Season) -> bool:
 
         await crud.save_seeds(db, season.id, seed_map)
 
-        first_round = voting.build_first_round_matchups(season.id, seed_map)
+        # Relegate bottom N books (N = promotion_count) from the bracket
+        relegated_ids = voting.get_relegated_book_ids(seed_map, settings.promotion_count)
+        bracket_seed_map = {bid: s for bid, s in seed_map.items() if bid not in relegated_ids}
+        # Re-number seeds contiguously for bracket generation
+        sorted_bracket = sorted(bracket_seed_map.items(), key=lambda x: x[1])
+        bracket_seed_map = {bid: i + 1 for i, (bid, _) in enumerate(sorted_bracket)}
+
+        first_round = voting.build_first_round_matchups(season.id, bracket_seed_map)
         await crud.create_matchups(db, first_round)
 
         await crud.set_season_state(db, season, SeasonState.bracket)
@@ -157,11 +191,26 @@ async def maybe_advance_bracket_round(db: AsyncSession, season: Season) -> bool:
         )
         db.add(rb)
         await crud.set_season_state(db, season, SeasonState.complete)
+        # Auto-create meetup poll
+        deadline = datetime.utcnow() + timedelta(weeks=settings.meetup_deadline_weeks)
+        meetup = await crud.create_meetup(db, season.id, deadline)
+
+        # Seed with default location options
+        if settings.meetup_default_locations.strip():
+            event_dt = _next_weekday_at(
+                deadline, settings.meetup_default_day, settings.meetup_default_time
+            )
+            for loc in settings.meetup_default_locations.split(","):
+                loc = loc.strip()
+                if loc:
+                    await crud.create_meetup_option(db, meetup.id, admin.id, event_dt, loc)
+
         await notify.notify_all(
             emails=emails,
             discord_msg=(
                 f"🎉 **{season.name}** is complete! "
-                f"The winner is **{winner_book.title}** by {winner_book.author}!"
+                f"The winner is **{winner_book.title}** by {winner_book.author}! "
+                f"Vote on when to meet: {url}/meetup"
             ),
             email_subject=f"{season.name} — We have a winner!",
             email_body=(
@@ -170,6 +219,7 @@ async def maybe_advance_bracket_round(db: AsyncSession, season: Season) -> bool:
                 f"by {winner_book.author}.</p>"
                 f"<p>Time to start reading!</p>"
                 f'<p><a href="{url}/complete">See the results →</a></p>'
+                f'<p><a href="{url}/meetup">Vote on meetup time →</a></p>'
             ),
         )
     else:

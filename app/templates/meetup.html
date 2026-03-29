@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}Meetup — Stumbling Book Club{% endblock %}
+{% block content %}
+
+{% if not meetup %}
+
+  <div class="text-center py-12">
+    <div class="text-5xl mb-4">📅</div>
+    <h1 class="font-serif text-3xl font-bold text-forest-700 mb-2">No meetup scheduled</h1>
+    <p class="text-forest-400">A meetup poll will be created automatically when a season completes.</p>
+  </div>
+
+{% elif meetup.finalized_option_id %}
+
+  <!-- Finalized state -->
+  <div class="text-center py-8">
+    <div class="text-6xl mb-3">📅</div>
+    <h1 class="font-serif text-3xl font-bold text-forest-700 mb-1">Meetup Scheduled!</h1>
+    {% if winner_book %}
+      <p class="text-forest-400 text-sm mb-6">{{ winner_book.title }} by {{ winner_book.author }}</p>
+    {% endif %}
+
+    <div class="inline-block bg-white border-2 border-forest-300 rounded-2xl px-10 py-8 shadow-md text-left">
+      <p class="text-2xl font-bold text-forest-800">
+        {{ meetup.finalized_option.event_datetime.strftime('%A, %b %d') }}
+      </p>
+      <p class="text-forest-600 text-lg">
+        {{ meetup.finalized_option.event_datetime.strftime('%-I:%M %p') }}
+      </p>
+      <p class="text-forest-500 mt-2">{{ meetup.finalized_option.location }}</p>
+    </div>
+  </div>
+
+  <!-- Full results -->
+  {% if sorted_options %}
+    <h2 class="text-lg font-semibold text-forest-700 mt-8 mb-3">All Options</h2>
+    <div class="flex flex-col gap-2">
+      {% for option in sorted_options %}
+        <div class="bg-white border rounded-lg px-5 py-3 flex items-center justify-between
+                    {{ 'border-forest-400 ring-2 ring-forest-200' if option.id == meetup.finalized_option_id else 'border-forest-200' }}">
+          <div>
+            <span class="font-medium text-forest-800">
+              {{ option.event_datetime.strftime('%A, %b %d at %-I:%M %p') }}
+            </span>
+            <span class="text-forest-500 text-sm">@ {{ option.location }}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-forest-600 font-semibold">{{ option.votes | length }}</span>
+            <span class="text-forest-400 text-xs">vote{{ 's' if option.votes | length != 1 else '' }}</span>
+            {% if option.id == meetup.finalized_option_id %}
+              <span class="text-xs bg-forest-100 text-forest-600 px-2 py-0.5 rounded-full font-medium">Chosen</span>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+{% else %}
+
+  <!-- Active poll -->
+  <h1 class="font-serif text-2xl font-bold text-forest-700 mb-1">
+    {% if winner_book %}
+      When should we meet to discuss {{ winner_book.title }}?
+    {% else %}
+      When should we meet?
+    {% endif %}
+  </h1>
+
+  <!-- Deadline banner -->
+  <div class="bg-forest-50 border border-forest-200 rounded-lg px-4 py-2 mb-6 mt-3 flex items-center justify-between">
+    <span class="text-forest-600 text-sm font-medium">
+      Poll closes {{ meetup.deadline.strftime('%A, %b %d at %-I:%M %p') }}
+    </span>
+    <span id="countdown" data-deadline="{{ meetup.deadline.isoformat() }}" class="text-forest-400 text-xs"></span>
+  </div>
+
+  <p class="text-forest-400 text-sm mb-4">Vote for all times that work for you.</p>
+
+  <!-- Options -->
+  {% if sorted_options %}
+    <div class="flex flex-col gap-3 mb-6">
+      {% for option in sorted_options %}
+        <div class="bg-white border rounded-xl px-5 py-4 shadow-sm
+                    {{ 'border-forest-400 bg-forest-50' if option.id in voted_ids else 'border-forest-200' }}">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="font-semibold text-forest-800">
+                {{ option.event_datetime.strftime('%A, %b %d at %-I:%M %p') }}
+              </p>
+              <p class="text-forest-600">{{ option.location }}</p>
+              <p class="text-forest-300 text-xs mt-1">Proposed by {{ option.proposer.visible_name }}</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="text-center">
+                <span class="text-xl font-bold text-forest-700">{{ option.votes | length }}</span>
+                <p class="text-forest-400 text-xs">vote{{ 's' if option.votes | length != 1 else '' }}</p>
+              </div>
+              <form method="post" action="/meetup/vote/{{ option.id }}">
+                <button type="submit"
+                        class="px-4 py-2 rounded-lg font-semibold text-sm transition
+                               {{ 'bg-forest-600 text-white hover:bg-forest-500' if option.id not in voted_ids else 'bg-forest-200 text-forest-700 hover:bg-forest-300' }}">
+                  {{ 'Voted' if option.id in voted_ids else 'Vote' }}
+                </button>
+              </form>
+              {% if option.proposed_by == user.id %}
+                {% set other_votes = option.votes | selectattr('user_id', 'ne', user.id) | list %}
+                {% if not other_votes %}
+                  <form method="post" action="/meetup/option/{{ option.id }}/delete">
+                    <button type="submit" class="text-sound-400 hover:text-sound-600 text-xs">Delete</button>
+                  </form>
+                {% endif %}
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-forest-400 mb-6">No options proposed yet. Add one below!</p>
+  {% endif %}
+
+
+  <!-- Add option form -->
+  <div class="bg-white border border-forest-200 rounded-xl px-6 py-5 shadow-sm mb-6">
+    <h2 class="text-lg font-semibold text-forest-700 mb-3">Propose a Time</h2>
+    <form method="post" action="/meetup/option" class="flex flex-col sm:flex-row gap-2">
+      <select name="event_month" required
+              class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900">
+        <option value="" disabled selected>Month</option>
+        {% for m in range(1, 13) %}
+          <option value="{{ m }}">{{ ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m-1] }}</option>
+        {% endfor %}
+      </select>
+      <input type="number" name="event_day" min="1" max="31" placeholder="Day" required
+             class="border border-forest-200 rounded-lg w-20 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+      <input type="time" name="event_time" value="19:00" required
+             class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+      <input type="text" name="location" placeholder="Location" required
+             class="flex-1 border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+      <button type="submit"
+              class="bg-forest-600 hover:bg-forest-500 text-white font-semibold px-4 py-2 rounded-lg text-sm transition">
+        Add
+      </button>
+    </form>
+  </div>
+
+  <!-- Admin controls -->
+  {% if user.is_admin %}
+    <div class="border-t border-forest-200 pt-6 mt-6">
+      <h2 class="text-lg font-semibold text-forest-700 mb-3">Admin Controls</h2>
+      <div class="flex flex-col sm:flex-row gap-4">
+        {% if sorted_options %}
+          <form method="post" action="/meetup/finalize" class="flex gap-2">
+            <select name="option_id"
+                    class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900">
+              {% for option in sorted_options %}
+                <option value="{{ option.id }}">
+                  {{ option.event_datetime.strftime('%b %d %-I:%M %p') }} @ {{ option.location }} ({{ option.votes | length }} votes)
+                </option>
+              {% endfor %}
+            </select>
+            <button type="submit"
+                    class="bg-sound-600 hover:bg-sound-500 text-white font-semibold px-4 py-2 rounded-lg text-sm transition">
+              Finalize
+            </button>
+          </form>
+        {% endif %}
+        <form method="post" action="/meetup/deadline" class="flex gap-2">
+          <input type="date" name="deadline_date" required
+                 value="{{ meetup.deadline.strftime('%Y-%m-%d') }}"
+                 class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+          <input type="time" name="deadline_time" required
+                 value="{{ meetup.deadline.strftime('%H:%M') }}"
+                 class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+          <button type="submit"
+                  class="bg-forest-200 hover:bg-forest-300 text-forest-700 font-semibold px-4 py-2 rounded-lg text-sm transition">
+            Update Deadline
+          </button>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+
+{% endif %}
+
+<script>
+(function() {
+  const el = document.getElementById('countdown');
+  if (!el) return;
+  const deadline = new Date(el.dataset.deadline);
+
+  function update() {
+    const now = new Date();
+    const diff = deadline - now;
+    if (diff <= 0) { el.textContent = 'Poll closed'; return; }
+    const days = Math.floor(diff / 86400000);
+    const hours = Math.floor((diff % 86400000) / 3600000);
+    const mins = Math.floor((diff % 3600000) / 60000);
+    const parts = [];
+    if (days > 0) parts.push(days + 'd');
+    if (hours > 0) parts.push(hours + 'h');
+    parts.push(mins + 'm');
+    el.textContent = parts.join(' ') + ' remaining';
+  }
+
+  update();
+  setInterval(update, 60000);
+})();
+</script>
+
+{% endblock %}

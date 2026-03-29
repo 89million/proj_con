@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     discord_webhook_url: str = ""
     resend_api_key: str = ""
     resend_from_email: str = "thehereandnow@stumblingbookclub.com"
+    meetup_deadline_weeks: int = 2
+    meetup_default_locations: str = "Monk,Mixed session"
+    meetup_default_day: str = "friday"
+    meetup_default_time: str = "19:00"
+    promotion_count: int = 2
 
     def is_email_allowed(self, email: str) -> bool:
         if not self.allowed_emails.strip():

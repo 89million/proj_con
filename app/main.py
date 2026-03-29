@@ -2,6 +2,7 @@
 
 import html as _html
 import math
+from datetime import datetime, timedelta
 
 import httpx
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
@@ -10,8 +11,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from app import crud, state, voting
+from app import crud, notify, state, voting
 from app.auth import (
     build_authorization_url,
     create_session_token,
@@ -23,7 +25,17 @@ from app.config import settings
 from app.database import get_db
 from app.models import IdeaStatus, ReadBook, SeasonState, User
 
+
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        if not request.url.path.startswith("/static"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
+
+
 app = FastAPI(title="Stumbling Book Club")
+app.add_middleware(NoCacheMiddleware)
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
@@ -182,6 +194,14 @@ async def root(
 
     # Truly no history — show the "no season" page (admin sees start button)
     return templates.TemplateResponse("no_season.html", {"request": request, "user": user})
+
+
+@app.get("/how-it-works", response_class=HTMLResponse)
+async def how_it_works(
+    request: Request,
+    user: User | None = Depends(get_user_or_none),
+):
+    return templates.TemplateResponse("how_it_works.html", {"request": request, "user": user})
 
 
 # ---------------------------------------------------------------------------
@@ -477,8 +497,10 @@ async def bracket_page(
             if vote:
                 user_votes[matchup.id] = vote.book_id
 
-    n_books = len(seeds)
-    total_rounds = _total_rounds_for_books(n_books)
+    # Count books actually in the bracket (excludes relegated books)
+    bracket_book_ids = {m.book_a_id for m in all_matchups} | {m.book_b_id for m in all_matchups}
+    n_bracket_books = len(bracket_book_ids) if bracket_book_ids else len(seeds)
+    total_rounds = _total_rounds_for_books(n_bracket_books)
     round_names = build_round_names(total_rounds)
 
     # Build seed lookup: book_id -> seed number
@@ -600,8 +622,11 @@ async def complete_page(
 ):
     season = await crud.get_most_recent_complete_season(db)
     winner_book = None
+    has_meetup = False
     if season:
         winner_book = await crud.get_winner_book_for_season(db, season.id)
+        meetup = await crud.get_active_meetup(db)
+        has_meetup = meetup is not None
 
     return templates.TemplateResponse(
         "complete.html",
@@ -610,6 +635,7 @@ async def complete_page(
             "user": user,
             "season": season,
             "winner_book": winner_book,
+            "has_meetup": has_meetup,
         },
     )
 
@@ -684,19 +710,46 @@ async def history_season_page(
     seeds = await crud.get_seeds_for_season(db, season_id)
     matchups = await crud.get_matchups_for_season(db, season_id)
     winner_book = await crud.get_winner_book_for_season(db, season_id)
-    n_books = len(books)
-    total_rounds = _total_rounds_for_books(n_books)
+    # Count books actually in the bracket (excludes relegated books)
+    bracket_book_ids = {m.book_a_id for m in matchups} | {m.book_b_id for m in matchups}
+    n_bracket_books = len(bracket_book_ids) if bracket_book_ids else len(books)
+    total_rounds = _total_rounds_for_books(n_bracket_books)
     round_names = build_round_names(total_rounds)
 
     # Borda scores: (N_books - rank) per vote, summed per book
     all_borda_votes = await crud.get_all_borda_votes_for_season(db, season_id)
     borda_scores: dict[int, int] = {}
     for vote in all_borda_votes:
-        borda_scores[vote.book_id] = borda_scores.get(vote.book_id, 0) + (n_books - vote.rank)
+        borda_scores[vote.book_id] = borda_scores.get(vote.book_id, 0) + (len(books) - vote.rank)
 
     prior_nominations = await crud.get_prior_nomination_counts(db, season_id)
     matchup_ties = {m.id: matchup_tiebreaker(m, prior_nominations) for m in matchups}
     seed_ties = seed_tiebreakers(seeds, borda_scores, prior_nominations)
+
+    # Playoff performance tier for subtle row coloring in the seeds table.
+    # Tiers: "winner" | "final" | "semi" | "early" | "relegated"
+    book_playoff: dict[int, str] = {}
+    if matchups and winner_book:
+        max_round = max(m.round for m in matchups)
+        for book in books:
+            bid = book.id
+            if bid == winner_book.id:
+                book_playoff[bid] = "winner"
+            elif bid not in bracket_book_ids:
+                book_playoff[bid] = "relegated"
+            else:
+                lost_round = 0
+                for m in matchups:
+                    if m.book_a_id == m.book_b_id:
+                        continue
+                    if bid in (m.book_a_id, m.book_b_id) and m.winner_id and m.winner_id != bid:
+                        lost_round = max(lost_round, m.round)
+                if lost_round == max_round:
+                    book_playoff[bid] = "final"
+                elif lost_round == max_round - 1:
+                    book_playoff[bid] = "semi"
+                else:
+                    book_playoff[bid] = "early"
 
     return templates.TemplateResponse(
         "history_season.html",
@@ -714,6 +767,7 @@ async def history_season_page(
             "total_rounds": total_rounds,
             "matchup_tiebreakers": matchup_ties,
             "seed_tiebreakers": seed_ties,
+            "book_playoff": book_playoff,
         },
     )
 
@@ -899,6 +953,13 @@ async def admin_page(
         else []
     )
 
+    # Check if most recent complete season has a meetup
+    latest_complete = await crud.get_most_recent_complete_season(db)
+    has_meetup = False
+    if latest_complete:
+        existing = await crud.get_active_meetup(db)
+        has_meetup = existing is not None
+
     # God mode context — state-aware data for admin-on-behalf-of-user actions
     god_mode: dict = {}
     if active_season and active_season.state != SeasonState.complete:
@@ -931,8 +992,42 @@ async def admin_page(
             "season_non_participants": season_non_participants,
             "allowlist_gaps": allowlist_gaps,
             "god_mode": god_mode,
+            "latest_complete": latest_complete,
+            "has_meetup": has_meetup,
+            "promotion_count": settings.promotion_count,
         },
     )
+
+
+@app.post("/admin/create-meetup", response_class=HTMLResponse)
+async def admin_create_meetup(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    """Manually create a meetup poll for the most recent completed season."""
+    from app.state import _next_weekday_at
+
+    season = await crud.get_most_recent_complete_season(db)
+    if not season:
+        return RedirectResponse("/admin", status_code=302)
+
+    existing = await crud.get_active_meetup(db)
+    if existing and existing.season_id == season.id:
+        return RedirectResponse("/admin", status_code=302)
+
+    deadline = datetime.utcnow() + timedelta(weeks=settings.meetup_deadline_weeks)
+    meetup = await crud.create_meetup(db, season.id, deadline)
+
+    if settings.meetup_default_locations.strip():
+        event_dt = _next_weekday_at(
+            deadline, settings.meetup_default_day, settings.meetup_default_time
+        )
+        for loc in settings.meetup_default_locations.split(","):
+            loc = loc.strip()
+            if loc:
+                await crud.create_meetup_option(db, meetup.id, user.id, event_dt, loc)
+
+    return RedirectResponse("/admin", status_code=302)
 
 
 # ---------------------------------------------------------------------------
@@ -1042,6 +1137,36 @@ async def god_mode_bracket_vote(
     return RedirectResponse("/admin", status_code=302)
 
 
+@app.post("/admin/god-mode/auto-vote", response_class=HTMLResponse)
+async def god_mode_auto_vote(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Randomly vote for every user who hasn't voted yet in the current bracket round."""
+    import random
+
+    season = await crud.get_active_season(db)
+    if season is None or season.state != SeasonState.bracket:
+        return RedirectResponse("/admin", status_code=302)
+
+    current_round = await crud.get_current_bracket_round(db, season.id)
+    not_voted = await crud.users_who_havent_voted_round(db, season.id, current_round)
+    matchups = await crud.get_matchups_for_round(db, season.id, current_round)
+
+    for user in not_voted:
+        for m in matchups:
+            if m.book_a_id == m.book_b_id:
+                continue  # bye
+            existing = await crud.get_bracket_vote(db, user.id, m.id)
+            if existing:
+                continue
+            pick = random.choice([m.book_a_id, m.book_b_id])
+            await crud.save_bracket_vote(db, user.id, m.id, pick)
+
+    await state.maybe_advance_bracket_round(db, season)
+    return RedirectResponse("/admin", status_code=302)
+
+
 @app.post("/admin/god-mode/copy-submissions", response_class=HTMLResponse)
 async def god_mode_copy_submissions(
     source_season_id: int = Form(...),
@@ -1090,6 +1215,13 @@ async def create_season(
     all_users = await crud.get_all_users(db)
     for u in all_users:
         await crud.add_participant(db, season.id, u.id)
+
+    # Auto-promote top books from the most recent completed season
+    if settings.promotion_count > 0:
+        prior = await crud.get_most_recent_complete_season(db)
+        if prior:
+            await crud.promote_books_to_season(db, prior.id, season.id, settings.promotion_count)
+
     return RedirectResponse("/admin", status_code=302)
 
 
@@ -1264,6 +1396,173 @@ async def delete_book(
 # ---------------------------------------------------------------------------
 # User settings
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Meetup scheduling
+# ---------------------------------------------------------------------------
+
+
+@app.get("/meetup", response_class=HTMLResponse)
+async def meetup_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    meetup = await crud.get_active_meetup(db)
+    if meetup and not meetup.finalized_option_id and datetime.utcnow() > meetup.deadline:
+        winner = await crud.finalize_meetup(db, meetup)
+        if winner:
+            participants = await crud.get_participants_for_season(db, meetup.season_id)
+            emails = [u.email for u in participants if u.email and u.email_notifications]
+            await notify.notify_all(
+                emails=emails,
+                discord_msg=(
+                    f"📅 Meetup decided! "
+                    f"{winner.event_datetime.strftime('%A, %b %d at %-I:%M %p')} "
+                    f"at {winner.location}"
+                ),
+                email_subject="Meetup time is set!",
+                email_body=(
+                    f"<h2>We're meeting up!</h2>"
+                    f"<p>{winner.event_datetime.strftime('%A, %b %d at %-I:%M %p')} "
+                    f"at {winner.location}</p>"
+                ),
+            )
+            # Reload to get updated finalized_option
+            meetup = await crud.get_active_meetup(db)
+
+    voted_ids: set[int] = set()
+    winner_book = None
+    if meetup:
+        voted_ids = {
+            v.option_id for opt in meetup.options for v in opt.votes if v.user_id == user.id
+        }
+        winner_book = await crud.get_winner_book_for_season(db, meetup.season_id)
+
+    # Stable order by creation time so cards don't jump around after voting.
+    # Vote counts are shown on each card — no need to reorder by popularity.
+    sorted_options = sorted(meetup.options, key=lambda o: o.created_at) if meetup else []
+
+    return templates.TemplateResponse(
+        "meetup.html",
+        {
+            "request": request,
+            "user": user,
+            "meetup": meetup,
+            "sorted_options": sorted_options,
+            "voted_ids": voted_ids,
+            "winner_book": winner_book,
+        },
+    )
+
+
+@app.post("/meetup/option", response_class=HTMLResponse)
+async def add_meetup_option(
+    event_month: int = Form(...),
+    event_day: int = Form(...),
+    event_time: str = Form("19:00"),
+    location: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    meetup = await crud.get_active_meetup_shallow(db)
+    if not meetup or meetup.finalized_option_id or datetime.utcnow() > meetup.deadline:
+        return RedirectResponse("/meetup", status_code=302)
+    try:
+        hour, minute = (int(x) for x in event_time.split(":"))
+        now = datetime.utcnow()
+        year = now.year
+        # In Nov/Dec, if proposed month is Jan/Feb, assume next year
+        if now.month >= 11 and event_month <= 2:
+            year += 1
+        event_dt = datetime(year, event_month, event_day, hour, minute)
+    except (ValueError, TypeError):
+        return RedirectResponse("/meetup", status_code=302)
+    if event_dt < datetime.utcnow():
+        return RedirectResponse("/meetup", status_code=302)
+    await crud.create_meetup_option(db, meetup.id, user.id, event_dt, location.strip())
+    return RedirectResponse("/meetup", status_code=302)
+
+
+@app.post("/meetup/vote/{option_id}", response_class=HTMLResponse)
+async def toggle_meetup_vote(
+    option_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    # Pure scalar check — no ORM objects loaded into the session at all,
+    # so no cascade/relationship interference can occur during commit.
+    if not await crud.is_meetup_option_votable(db, option_id):
+        return RedirectResponse("/meetup", status_code=302)
+    await crud.toggle_meetup_vote(db, option_id, user.id)
+    return RedirectResponse("/meetup", status_code=302)
+
+
+@app.post("/meetup/option/{option_id}/delete", response_class=HTMLResponse)
+async def delete_meetup_option(
+    option_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    meetup = await crud.get_active_meetup_shallow(db)
+    if not meetup or meetup.finalized_option_id or datetime.utcnow() > meetup.deadline:
+        return RedirectResponse("/meetup", status_code=302)
+    await crud.delete_meetup_option(db, option_id, user.id)
+    return RedirectResponse("/meetup", status_code=302)
+
+
+@app.post("/meetup/finalize", response_class=HTMLResponse)
+async def finalize_meetup(
+    option_id: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    meetup = await crud.get_active_meetup_shallow(db)
+    if not meetup or meetup.finalized_option_id:
+        return RedirectResponse("/meetup", status_code=302)
+    await crud.admin_finalize_meetup(db, meetup, option_id)
+    # Reload to get the finalized option details
+    meetup = await crud.get_active_meetup(db)
+    if meetup and meetup.finalized_option:
+        opt = meetup.finalized_option
+        participants = await crud.get_participants_for_season(db, meetup.season_id)
+        emails = [u.email for u in participants if u.email and u.email_notifications]
+        await notify.notify_all(
+            emails=emails,
+            discord_msg=(
+                f"📅 Meetup decided! "
+                f"{opt.event_datetime.strftime('%A, %b %d at %-I:%M %p')} "
+                f"at {opt.location}"
+            ),
+            email_subject="Meetup time is set!",
+            email_body=(
+                f"<h2>We're meeting up!</h2>"
+                f"<p>{opt.event_datetime.strftime('%A, %b %d at %-I:%M %p')} "
+                f"at {opt.location}</p>"
+            ),
+        )
+    return RedirectResponse("/meetup", status_code=302)
+
+
+@app.post("/meetup/deadline", response_class=HTMLResponse)
+async def update_meetup_deadline(
+    deadline_date: str = Form(...),
+    deadline_time: str = Form("23:59"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    meetup = await crud.get_active_meetup_shallow(db)
+    if not meetup or meetup.finalized_option_id:
+        return RedirectResponse("/meetup", status_code=302)
+    try:
+        hour, minute = (int(x) for x in deadline_time.split(":"))
+        year, month, day = (int(x) for x in deadline_date.split("-"))
+        new_deadline = datetime(year, month, day, hour, minute)
+    except (ValueError, TypeError):
+        return RedirectResponse("/meetup", status_code=302)
+    await crud.update_meetup_deadline(db, meetup, new_deadline)
+    return RedirectResponse("/meetup", status_code=302)
 
 
 @app.get("/settings", response_class=HTMLResponse)

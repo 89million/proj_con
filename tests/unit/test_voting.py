@@ -11,6 +11,7 @@ from app.voting import (
     build_first_round_matchups,
     build_next_round_matchups,
     compute_borda_seeds,
+    get_relegated_book_ids,
     resolve_matchup_winner,
 )
 
@@ -468,3 +469,55 @@ def test_resolve_matchup_winner_prior_nominations_dont_override_vote_lead():
     ]
     prior = {10: 99, 20: 0}
     assert resolve_matchup_winner(matchup, votes, prior_nominations=prior) == 20
+
+
+# ---------------------------------------------------------------------------
+# get_relegated_book_ids
+# ---------------------------------------------------------------------------
+
+
+def test_relegated_basic():
+    """Bottom 2 seeds are relegated from a 6-book map."""
+    seed_map = {10: 1, 20: 2, 30: 3, 40: 4, 50: 5, 60: 6}
+    relegated = get_relegated_book_ids(seed_map, relegate_count=2)
+    assert relegated == {50, 60}
+
+
+def test_relegated_count_zero():
+    """relegate_count=0 returns empty set."""
+    seed_map = {10: 1, 20: 2, 30: 3}
+    assert get_relegated_book_ids(seed_map, relegate_count=0) == set()
+
+
+def test_relegated_negative_count():
+    """Negative relegate_count returns empty set."""
+    seed_map = {10: 1, 20: 2, 30: 3}
+    assert get_relegated_book_ids(seed_map, relegate_count=-1) == set()
+
+
+def test_relegated_safety_net_too_few_remaining():
+    """Won't relegate if too few books would remain for a bracket."""
+    seed_map = {10: 1, 20: 2, 30: 3}
+    # 3 books - 2 = 1, which is < min_bracket_size=2
+    assert get_relegated_book_ids(seed_map, relegate_count=2) == set()
+
+
+def test_relegated_safety_net_exact_minimum():
+    """Relegation fires when exactly min_bracket_size books remain."""
+    seed_map = {10: 1, 20: 2, 30: 3, 40: 4}
+    # 4 books - 2 = 2, which == min_bracket_size=2 → should relegate
+    relegated = get_relegated_book_ids(seed_map, relegate_count=2)
+    assert relegated == {30, 40}
+
+
+def test_relegated_custom_min_bracket_size():
+    """Custom min_bracket_size is respected."""
+    seed_map = {10: 1, 20: 2, 30: 3, 40: 4}
+    # 4 - 2 = 2 < min_bracket_size=4 → no relegation
+    assert get_relegated_book_ids(seed_map, relegate_count=2, min_bracket_size=4) == set()
+
+
+def test_relegated_single_book():
+    """Single book, relegate_count=1 → can't relegate (would leave 0)."""
+    seed_map = {10: 1}
+    assert get_relegated_book_ids(seed_map, relegate_count=1) == set()

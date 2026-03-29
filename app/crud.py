@@ -1,5 +1,7 @@
 """All database read/write operations."""
 
+from datetime import datetime
+
 from rapidfuzz.distance import Levenshtein
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +16,9 @@ from app.models import (
     FeatureIdea,
     IdeaStatus,
     IdeaUpvote,
+    Meetup,
+    MeetupOption,
+    MeetupVote,
     ReadBook,
     Season,
     SeasonParticipant,
@@ -93,6 +98,46 @@ async def get_winner_book_for_season(db: AsyncSession, season_id: int) -> "Book 
         return None
     books = await get_books_for_season(db, season_id)
     return next((b for b in books if b.id == final.winner_id), None)
+
+
+async def get_promotable_books(db: AsyncSession, season_id: int, count: int) -> list[Book]:
+    """Top `count` non-winning books from a completed season, ordered by seed (best first)."""
+    winner = await get_winner_book_for_season(db, season_id)
+    winner_id = winner.id if winner else None
+
+    query = (
+        select(Book)
+        .join(Seed, and_(Seed.book_id == Book.id, Seed.season_id == season_id))
+        .where(Book.season_id == season_id)
+    )
+    if winner_id is not None:
+        query = query.where(Book.id != winner_id)
+    result = await db.execute(query.order_by(Seed.seed.asc()).limit(count))
+    return list(result.scalars().all())
+
+
+async def promote_books_to_season(
+    db: AsyncSession, source_season_id: int, target_season_id: int, count: int
+) -> list[Book]:
+    """Auto-promote top non-winning books from source into target season."""
+    promotable = await get_promotable_books(db, source_season_id, count)
+    promoted = []
+    for book in promotable:
+        new_book = Book(
+            title=book.title,
+            author=book.author,
+            page_count=book.page_count,
+            description=book.description,
+            submitter_id=book.submitter_id,
+            season_id=target_season_id,
+            promoted=True,
+        )
+        db.add(new_book)
+        promoted.append(new_book)
+    await db.commit()
+    for b in promoted:
+        await db.refresh(b)
+    return promoted
 
 
 async def get_all_seasons(db: AsyncSession) -> list[Season]:
@@ -202,8 +247,15 @@ async def get_books_for_season(db: AsyncSession, season_id: int) -> list[Book]:
 
 
 async def get_book_submitted_by_user(db: AsyncSession, user_id: int, season_id: int) -> Book | None:
+    """Return the user's manual (non-promoted) submission for this season, if any."""
     result = await db.execute(
-        select(Book).where(and_(Book.submitter_id == user_id, Book.season_id == season_id))
+        select(Book).where(
+            and_(
+                Book.submitter_id == user_id,
+                Book.season_id == season_id,
+                Book.promoted == False,  # noqa: E712
+            )
+        )
     )
     return result.scalar_one_or_none()
 
@@ -232,8 +284,11 @@ async def create_book(
 
 
 async def count_submissions(db: AsyncSession, season_id: int) -> int:
+    """Count manual (non-promoted) submissions for auto-advance logic."""
     result = await db.execute(
-        select(func.count()).select_from(Book).where(Book.season_id == season_id)
+        select(func.count())
+        .select_from(Book)
+        .where(Book.season_id == season_id, Book.promoted == False)  # noqa: E712
     )
     return result.scalar_one()
 
@@ -845,7 +900,9 @@ async def users_who_havent_submitted(db: AsyncSession, season_id: int) -> list[U
     participant_subq = select(SeasonParticipant.user_id).where(
         SeasonParticipant.season_id == season_id
     )
-    submitted_subq = select(Book.submitter_id).where(Book.season_id == season_id)
+    submitted_subq = select(Book.submitter_id).where(
+        Book.season_id == season_id, Book.promoted == False  # noqa: E712
+    )
     result = await db.execute(
         select(User)
         .where(User.id.in_(participant_subq))
@@ -1088,3 +1145,175 @@ async def get_bracket_vote_accuracy(db: AsyncSession, user_id: int) -> tuple[int
     total = len(rows)
     correct = sum(1 for vote_book, winner in rows if vote_book == winner)
     return correct, total
+
+
+# ---------------------------------------------------------------------------
+# Meetups
+# ---------------------------------------------------------------------------
+
+
+async def create_meetup(db: AsyncSession, season_id: int, deadline: datetime) -> Meetup:
+    meetup = Meetup(season_id=season_id, deadline=deadline)
+    db.add(meetup)
+    await db.commit()
+    await db.refresh(meetup)
+    return meetup
+
+
+async def get_active_meetup(db: AsyncSession) -> Meetup | None:
+    """Get the meetup for the most recently completed season, with options+votes loaded."""
+    result = await db.execute(
+        select(Meetup)
+        .join(Season, Meetup.season_id == Season.id)
+        .where(Season.state == SeasonState.complete)
+        .options(
+            selectinload(Meetup.options).selectinload(MeetupOption.votes),
+            selectinload(Meetup.options).selectinload(MeetupOption.proposer),
+            selectinload(Meetup.season),
+        )
+        .order_by(Season.created_at.desc())
+    )
+    meetup = result.scalars().first()
+    if meetup and meetup.finalized_option_id:
+        # Manually resolve finalized option from the already-loaded options list
+        meetup.finalized_option = next(
+            (o for o in meetup.options if o.id == meetup.finalized_option_id), None
+        )
+    elif meetup:
+        meetup.finalized_option = None
+    return meetup
+
+
+async def get_active_meetup_shallow(db: AsyncSession) -> Meetup | None:
+    """Get the meetup for the most recently completed season (no eager-loaded votes).
+
+    Use this in write routes to avoid loading votes into the session,
+    which prevents cascade interference during vote toggle/delete operations.
+    """
+    result = await db.execute(
+        select(Meetup)
+        .join(Season, Meetup.season_id == Season.id)
+        .where(Season.state == SeasonState.complete)
+        .order_by(Season.created_at.desc())
+    )
+    return result.scalars().first()
+
+
+async def option_belongs_to_meetup(db: AsyncSession, option_id: int, meetup_id: int) -> bool:
+    result = await db.execute(
+        select(func.count())
+        .select_from(MeetupOption)
+        .where(MeetupOption.id == option_id, MeetupOption.meetup_id == meetup_id)
+    )
+    return result.scalar_one() > 0
+
+
+async def is_meetup_option_votable(db: AsyncSession, option_id: int) -> bool:
+    """Check if option belongs to an active, open, non-finalized meetup.
+
+    Pure scalar query — loads no ORM objects into the session.
+    """
+    result = await db.execute(
+        select(func.count())
+        .select_from(MeetupOption)
+        .join(Meetup, MeetupOption.meetup_id == Meetup.id)
+        .join(Season, Meetup.season_id == Season.id)
+        .where(
+            MeetupOption.id == option_id,
+            Season.state == SeasonState.complete,
+            Meetup.finalized_option_id.is_(None),
+            Meetup.deadline > func.now(),
+        )
+    )
+    return result.scalar_one() > 0
+
+
+async def create_meetup_option(
+    db: AsyncSession,
+    meetup_id: int,
+    proposed_by: int,
+    event_datetime: datetime,
+    location: str,
+) -> MeetupOption:
+    option = MeetupOption(
+        meetup_id=meetup_id,
+        proposed_by=proposed_by,
+        event_datetime=event_datetime,
+        location=location,
+    )
+    db.add(option)
+    await db.commit()
+    await db.refresh(option)
+    return option
+
+
+async def delete_meetup_option(db: AsyncSession, option_id: int, user_id: int) -> bool:
+    """Delete own option, only if no votes from other users."""
+    result = await db.execute(
+        select(MeetupOption)
+        .where(MeetupOption.id == option_id)
+        .options(selectinload(MeetupOption.votes))
+    )
+    option = result.scalar_one_or_none()
+    if option is None or option.proposed_by != user_id:
+        return False
+    other_votes = [v for v in option.votes if v.user_id != user_id]
+    if other_votes:
+        return False
+    await db.delete(option)
+    await db.commit()
+    return True
+
+
+async def toggle_meetup_vote(db: AsyncSession, option_id: int, user_id: int) -> bool:
+    """Toggle vote. Returns True if added, False if removed.
+
+    Uses raw DML (INSERT/DELETE) instead of ORM objects to avoid
+    cascade/relationship interference when other votes are in the session.
+    """
+    from sqlalchemy import delete, insert
+
+    # Check existence via scalar count — no ORM objects loaded
+    result = await db.execute(
+        select(func.count())
+        .select_from(MeetupVote)
+        .where(MeetupVote.option_id == option_id, MeetupVote.user_id == user_id)
+    )
+    exists = result.scalar_one() > 0
+
+    if exists:
+        await db.execute(
+            delete(MeetupVote).where(
+                MeetupVote.option_id == option_id, MeetupVote.user_id == user_id
+            )
+        )
+        await db.commit()
+        return False
+    await db.execute(insert(MeetupVote).values(option_id=option_id, user_id=user_id))
+    await db.commit()
+    return True
+
+
+async def finalize_meetup(db: AsyncSession, meetup: Meetup) -> MeetupOption | None:
+    """Finalize by picking top-voted option (ties: earliest created_at)."""
+    if not meetup.options:
+        return None
+    best = max(
+        meetup.options,
+        key=lambda o: (len(o.votes), -o.created_at.timestamp()),
+    )
+    if not best.votes:
+        return None
+    meetup.finalized_option_id = best.id
+    await db.commit()
+    return best
+
+
+async def admin_finalize_meetup(db: AsyncSession, meetup: Meetup, option_id: int) -> None:
+    meetup.finalized_option_id = option_id
+    await db.commit()
+
+
+async def update_meetup_deadline(db: AsyncSession, meetup: Meetup, new_deadline: datetime) -> None:
+    meetup.deadline = new_deadline
+    await db.commit()

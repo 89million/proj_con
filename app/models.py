@@ -81,7 +81,6 @@ class Season(Base):
 class Book(Base):
     __tablename__ = "books"
     __table_args__ = (
-        UniqueConstraint("submitter_id", "season_id", name="uq_one_book_per_member_per_season"),
         UniqueConstraint("title", "author", "season_id", name="uq_no_duplicate_titles_per_season"),
     )
 
@@ -92,6 +91,7 @@ class Book(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     submitter_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     season_id: Mapped[int] = mapped_column(ForeignKey("seasons.id"), nullable=False)
+    promoted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     submitted_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     submitter: Mapped["User"] = relationship("User", back_populates="books")
@@ -266,4 +266,61 @@ class BookReview(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     read_book: Mapped["ReadBook"] = relationship("ReadBook", back_populates="reviews")
+    user: Mapped["User"] = relationship("User")
+
+
+class Meetup(Base):
+    """A scheduling poll for when/where to meet after a season completes."""
+
+    __tablename__ = "meetups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    season_id: Mapped[int] = mapped_column(ForeignKey("seasons.id"), unique=True, nullable=False)
+    deadline: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    finalized_option_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    season: Mapped["Season"] = relationship("Season")
+    options: Mapped[list["MeetupOption"]] = relationship(
+        "MeetupOption",
+        back_populates="meetup",
+        foreign_keys="MeetupOption.meetup_id",
+        cascade="save-update, merge, delete",
+    )
+
+
+class MeetupOption(Base):
+    """A proposed date+location for a meetup."""
+
+    __tablename__ = "meetup_options"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    meetup_id: Mapped[int] = mapped_column(ForeignKey("meetups.id"), nullable=False)
+    proposed_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    event_datetime: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    location: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    meetup: Mapped["Meetup"] = relationship(
+        "Meetup", back_populates="options", foreign_keys=[meetup_id]
+    )
+    proposer: Mapped["User"] = relationship("User")
+    votes: Mapped[list["MeetupVote"]] = relationship(
+        "MeetupVote", back_populates="option", cascade="save-update, merge, delete"
+    )
+
+
+class MeetupVote(Base):
+    """A user's vote indicating a meetup option works for them (multi-vote)."""
+
+    __tablename__ = "meetup_votes"
+    __table_args__ = (
+        UniqueConstraint("option_id", "user_id", name="uq_one_vote_per_user_per_option"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    option_id: Mapped[int] = mapped_column(ForeignKey("meetup_options.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+
+    option: Mapped["MeetupOption"] = relationship("MeetupOption", back_populates="votes")
     user: Mapped["User"] = relationship("User")

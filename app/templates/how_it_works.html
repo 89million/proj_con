@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}How It Works — Stumbling Book Club{% endblock %}
+{% block content %}
+
+<div class="text-center pt-8 pb-4">
+  <h1 class="font-serif text-4xl font-bold text-forest-700 mb-2">How It Works</h1>
+  <p class="text-forest-400 text-sm">From submission to celebration — a season in four acts.</p>
+</div>
+
+<!-- Timeline -->
+<div class="relative mt-8">
+
+  <!-- Vertical line -->
+  <div class="absolute left-6 top-0 bottom-0 w-0.5 bg-forest-200 hidden sm:block"></div>
+
+  <!-- Stage 1: Submit -->
+  <div class="relative flex gap-5 mb-10 group">
+    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-forest-600 text-white flex items-center justify-center text-2xl shadow-md z-10">
+      1
+    </div>
+    <div class="bg-white border border-forest-200 rounded-xl p-6 shadow-sm flex-1 hover:shadow-md transition">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="text-3xl">📚</span>
+        <h2 class="font-serif text-xl font-bold text-forest-700">Submit</h2>
+      </div>
+      <p class="text-forest-600 leading-relaxed">
+        A new season opens and everyone pitches <strong>one book</strong> they want the club to read.
+        Add a title, author, and page count — the app checks for duplicates and
+        books we've already read so nothing sneaks through twice.
+      </p>
+      <p class="text-forest-600 leading-relaxed mt-2">
+        You'll also see a couple of <span class="text-xs bg-sound-100 text-sound-600 px-1.5 py-0.5 rounded-full">promoted</span>
+        books carried over from last season — popular picks that didn't win get
+        another shot automatically.
+      </p>
+      <div class="mt-3 text-forest-300 text-xs italic">One new book per member, plus promoted books from last time.</div>
+    </div>
+  </div>
+
+  <!-- Stage 2: Rank -->
+  <div class="relative flex gap-5 mb-10 group">
+    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-forest-600 text-white flex items-center justify-center text-2xl shadow-md z-10">
+      2
+    </div>
+    <div class="bg-white border border-forest-200 rounded-xl p-6 shadow-sm flex-1 hover:shadow-md transition">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="text-3xl">🗳️</span>
+        <h2 class="font-serif text-xl font-bold text-forest-700">Rank</h2>
+      </div>
+      <p class="text-forest-600 leading-relaxed">
+        Once all books are in, everyone <strong>drag-and-drop ranks</strong> every submission
+        from favorite to least favorite. Rankings are tallied using a
+        <strong>Borda count</strong> — your #1 pick gets the most points, #2 a little less,
+        and so on. This produces fair seed numbers for the bracket.
+      </p>
+      <div class="mt-3 text-forest-300 text-xs italic">Think of it as the regular season — every book earns its seed.</div>
+    </div>
+  </div>
+
+  <!-- Stage 3: Bracket -->
+  <div class="relative flex gap-5 mb-10 group">
+    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-forest-600 text-white flex items-center justify-center text-2xl shadow-md z-10">
+      3
+    </div>
+    <div class="bg-white border border-forest-200 rounded-xl p-6 shadow-sm flex-1 hover:shadow-md transition">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="text-3xl">🏟️</span>
+        <h2 class="font-serif text-xl font-bold text-forest-700">Bracket</h2>
+      </div>
+      <p class="text-forest-600 leading-relaxed">
+        Not every book makes the bracket — the <strong>bottom seeds are relegated</strong>,
+        trimming the field so the tournament stays tight. The remaining top-seeded
+        books face off in a <strong>single-elimination tournament</strong>.
+        Seed #1 plays the lowest remaining seed, #2 plays the second-lowest, and so on.
+        Each round, everyone votes head-to-head — the book with the most votes advances.
+        Rounds auto-advance once all votes are in.
+      </p>
+      <p class="text-forest-600 leading-relaxed mt-2">
+        Relegated books aren't gone forever — anyone can re-submit one next season
+        if they still want the club to read it.
+      </p>
+      <div class="mt-3 flex items-center gap-4 text-forest-300 text-xs">
+        <span class="italic">The playoffs. May the best book win.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stage 4: Winner + Meetup -->
+  <div class="relative flex gap-5 mb-4 group">
+    <div class="flex-shrink-0 w-12 h-12 rounded-full bg-sound-500 text-white flex items-center justify-center text-2xl shadow-md z-10">
+      🏆
+    </div>
+    <div class="bg-white border-2 border-sound-200 rounded-xl p-6 shadow-sm flex-1 hover:shadow-md transition">
+      <div class="flex items-center gap-3 mb-2">
+        <span class="text-3xl">🎉</span>
+        <h2 class="font-serif text-xl font-bold text-sound-600">Winner + Meetup</h2>
+      </div>
+      <p class="text-forest-600 leading-relaxed">
+        The final matchup crowns a <strong>champion</strong> — that's the book we all read!
+        A meetup poll automatically opens so the club can vote on
+        <strong>when and where</strong> to get together and discuss. Propose times,
+        vote for everything that works, and the most popular option wins.
+      </p>
+      <div class="mt-3 text-forest-300 text-xs italic">Time to read, then time to talk about it.</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Extras -->
+<div class="mt-12 border-t border-forest-200 pt-8">
+  <h2 class="font-serif text-lg font-semibold text-forest-700 mb-4 text-center">Along the way...</h2>
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <a href="/history?tab=books" class="bg-white border border-forest-200 rounded-xl p-5 text-center shadow-sm hover:shadow-md hover:border-forest-300 transition block">
+      <div class="text-3xl mb-2">⭐</div>
+      <h3 class="font-semibold text-forest-700 text-sm mb-1">Rate & Review</h3>
+      <p class="text-forest-400 text-xs leading-relaxed">After reading, leave a star rating and optional review for every book.</p>
+    </a>
+    <a href="/ideas" class="bg-white border border-forest-200 rounded-xl p-5 text-center shadow-sm hover:shadow-md hover:border-forest-300 transition block">
+      <div class="text-3xl mb-2">💡</div>
+      <h3 class="font-semibold text-forest-700 text-sm mb-1">Feature Ideas</h3>
+      <p class="text-forest-400 text-xs leading-relaxed">Got an idea to make the club better? Submit it and let others upvote.</p>
+    </a>
+    <a href="/history" class="bg-white border border-forest-200 rounded-xl p-5 text-center shadow-sm hover:shadow-md hover:border-forest-300 transition block">
+      <div class="text-3xl mb-2">📖</div>
+      <h3 class="font-semibold text-forest-700 text-sm mb-1">History</h3>
+      <p class="text-forest-400 text-xs leading-relaxed">Browse every past season — seeds, brackets, winners, and reviews.</p>
+    </a>
+  </div>
+</div>
+
+<div class="text-center mt-10 mb-4">
+  {% if user %}
+    <a href="/" class="text-forest-400 text-sm hover:underline">Back to the action →</a>
+  {% else %}
+    <a href="/auth/login" class="inline-block bg-forest-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-forest-500 transition">
+      Sign in with Google
+    </a>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -41,6 +41,20 @@ def compute_borda_seeds(
     return {book.id: seed for seed, book in enumerate(sorted_books, start=1)}
 
 
+def get_relegated_book_ids(
+    seed_map: dict[int, int], relegate_count: int, min_bracket_size: int = 2
+) -> set[int]:
+    """Return book IDs of the bottom `relegate_count` seeds (excluded from bracket).
+
+    Returns empty set if relegating would leave fewer than `min_bracket_size` books.
+    """
+    total = len(seed_map)
+    if relegate_count <= 0 or total - relegate_count < min_bracket_size:
+        return set()
+    sorted_by_seed = sorted(seed_map.items(), key=lambda x: x[1], reverse=True)
+    return {book_id for book_id, _ in sorted_by_seed[:relegate_count]}
+
+
 def _next_power_of_2(n: int) -> int:
     p = 1
     while p < n:
