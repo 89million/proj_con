@@ -22,7 +22,7 @@
   <div class="mt-10 flex flex-col items-center gap-3">
     {% if has_meetup %}
       <a href="/meetup" class="bg-forest-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-forest-500 transition text-lg">
-        Vote on meetup time →
+        {% if meetup_finalized %}RSVP for meetup →{% else %}Vote on meetup time →{% endif %}
       </a>
     {% endif %}
     {% if user and user.is_admin %}

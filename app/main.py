@@ -662,10 +662,12 @@ async def complete_page(
     season = await crud.get_most_recent_complete_season(db)
     winner_book = None
     has_meetup = False
+    meetup_finalized = False
     if season:
         winner_book = await crud.get_winner_book_for_season(db, season.id)
         meetup = await crud.get_active_meetup(db)
         has_meetup = meetup is not None
+        meetup_finalized = meetup is not None and meetup.finalized_option_id is not None
 
     return templates.TemplateResponse(
         "complete.html",
@@ -675,6 +677,7 @@ async def complete_page(
             "season": season,
             "winner_book": winner_book,
             "has_meetup": has_meetup,
+            "meetup_finalized": meetup_finalized,
         },
     )
 

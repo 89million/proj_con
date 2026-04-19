@@ -485,11 +485,20 @@ async def test_finalized_meetup_shows_all_results(
 
 
 async def test_complete_page_shows_meetup_cta(engine, test_user, complete_season_with_meetup):
-    """The /complete page shows a 'Vote on meetup time' button when meetup exists."""
+    """The /complete page shows a 'Vote on meetup time' button when meetup is open."""
     async with make_client(engine, test_user) as client:
         resp = await client.get("/complete")
     assert resp.status_code == 200
     assert "Vote on meetup time" in resp.text
+
+
+async def test_complete_page_shows_rsvp_cta_when_finalized(engine, test_user, finalized_meetup):
+    """The /complete page shows 'RSVP for meetup' once voting is closed."""
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/complete")
+    assert resp.status_code == 200
+    assert "RSVP for meetup" in resp.text
+    assert "Vote on meetup time" not in resp.text
 
 
 # ---------------------------------------------------------------------------
