@@ -56,6 +56,147 @@
     </div>
   {% endif %}
 
+  <!-- Admin controls (finalized) -->
+  {% if user.is_admin %}
+    <div class="border-t border-forest-200 pt-6 mt-8">
+      <h2 class="text-lg font-semibold text-forest-700 mb-3">Admin Controls</h2>
+      <form method="post" action="/admin/meetup/option/{{ meetup.finalized_option_id }}" class="flex flex-wrap gap-3 items-end">
+        <div class="flex flex-col gap-1">
+          <label class="text-xs text-forest-500 font-medium">Location</label>
+          <input type="text" name="location"
+                 value="{{ meetup.finalized_option.location }}"
+                 required
+                 class="border border-forest-200 rounded-lg px-3 py-2 text-sm w-72 focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+        </div>
+        <label class="flex items-center gap-2 cursor-pointer pb-2">
+          <input type="checkbox" name="is_hybrid" value="true"
+                 {{ 'checked' if meetup.finalized_option.is_hybrid else '' }}
+                 class="accent-forest-600">
+          <span class="text-sm font-medium text-forest-800">Mixed session (in-person + remote)</span>
+        </label>
+        <button type="submit"
+                class="bg-forest-200 hover:bg-forest-300 text-forest-700 font-semibold px-4 py-2 rounded-lg text-sm transition">
+          Update
+        </button>
+      </form>
+    </div>
+  {% endif %}
+
+  <!-- RSVP -->
+  <div class="mt-10">
+    <h2 class="text-lg font-semibold text-forest-700 mb-4">Are you coming?</h2>
+
+    <form method="post" action="/meetup/rsvp" id="rsvp-form" class="bg-white border border-forest-200 rounded-xl px-6 py-5 shadow-sm mb-6">
+      <!-- Attendance -->
+      <div class="flex flex-wrap gap-3 mb-4">
+        {% for val, label in [("attending", "Yes, I'm in"), ("maybe", "Maybe"), ("not_attending", "Can't make it")] %}
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="status" value="{{ val }}"
+                   {{ 'checked' if my_rsvp and my_rsvp.status == val else '' }}
+                   class="accent-forest-600"
+                   onchange="updateRsvpFields()">
+            <span class="text-sm font-medium text-forest-800">{{ label }}</span>
+          </label>
+        {% endfor %}
+      </div>
+
+      <!-- Venue (shown when attending or maybe) -->
+      <div id="venue-section" class="mb-4 hidden">
+        <p class="text-sm text-forest-500 mb-2">How will you join?</p>
+        <div class="flex flex-wrap gap-3">
+          {% for val, label in [("in_person", "In person"), ("remote", "Remote")] %}
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="venue" value="{{ val }}"
+                     {{ 'checked' if my_rsvp and my_rsvp.venue == val else '' }}
+                     class="accent-forest-600"
+                     onchange="updateRsvpFields()">
+              <span class="text-sm font-medium text-forest-800">{{ label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Discord (shown when remote) -->
+      <div id="discord-section" class="mb-4 hidden">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" name="discord_ok" value="true"
+                 {{ 'checked' if my_rsvp and my_rsvp.discord_ok else '' }}
+                 class="accent-forest-600">
+          <span class="text-sm font-medium text-forest-800">I can use Discord for audio/video</span>
+        </label>
+      </div>
+
+      <button type="submit"
+              class="bg-forest-600 hover:bg-forest-500 text-white font-semibold px-5 py-2 rounded-lg text-sm transition">
+        {{ 'Update RSVP' if my_rsvp else 'Submit RSVP' }}
+      </button>
+    </form>
+
+    <!-- Attendee summary -->
+    {% if rsvps %}
+      {% set attending = rsvps | selectattr('status', 'eq', 'attending') | list %}
+      {% set maybe = rsvps | selectattr('status', 'eq', 'maybe') | list %}
+      {% set not_attending = rsvps | selectattr('status', 'eq', 'not_attending') | list %}
+
+      <div class="flex flex-col gap-4">
+        {% if attending %}
+          <div>
+            <p class="text-sm font-semibold text-forest-700 mb-1">Coming ({{ attending | length }})</p>
+            <div class="flex flex-wrap gap-2">
+              {% for r in attending %}
+                <span class="inline-flex items-center gap-1.5 bg-forest-50 border border-forest-200 rounded-full px-3 py-1 text-xs text-forest-700">
+                  {{ r.user.visible_name }}
+                  {% if r.venue == 'in_person' %}
+                    <span class="text-forest-400">· in person</span>
+                  {% elif r.venue == 'remote' %}
+                    <span class="text-forest-400">· remote</span>
+                    {% if r.discord_ok %}
+                      <span class="text-forest-400">· Discord ✓</span>
+                    {% endif %}
+                  {% endif %}
+                </span>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+
+        {% if maybe %}
+          <div>
+            <p class="text-sm font-semibold text-forest-700 mb-1">Maybe ({{ maybe | length }})</p>
+            <div class="flex flex-wrap gap-2">
+              {% for r in maybe %}
+                <span class="inline-flex items-center gap-1.5 bg-sound-50 border border-sound-200 rounded-full px-3 py-1 text-xs text-sound-700">
+                  {{ r.user.visible_name }}
+                  {% if r.venue == 'in_person' %}
+                    <span class="text-sound-400">· in person</span>
+                  {% elif r.venue == 'remote' %}
+                    <span class="text-sound-400">· remote</span>
+                    {% if r.discord_ok %}
+                      <span class="text-sound-400">· Discord ✓</span>
+                    {% endif %}
+                  {% endif %}
+                </span>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+
+        {% if not_attending %}
+          <div>
+            <p class="text-sm font-semibold text-forest-400 mb-1">Can't make it ({{ not_attending | length }})</p>
+            <div class="flex flex-wrap gap-2">
+              {% for r in not_attending %}
+                <span class="bg-gray-100 rounded-full px-3 py-1 text-xs text-gray-500">
+                  {{ r.user.visible_name }}
+                </span>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
 {% else %}
 
   <!-- Active poll -->
@@ -183,6 +324,21 @@
   {% endif %}
 
 {% endif %}
+
+<script>
+var IS_HYBRID = {{ 'true' if meetup and meetup.finalized_option and meetup.finalized_option.is_hybrid else 'false' }};
+function updateRsvpFields() {
+  const status = document.querySelector('input[name="status"]:checked')?.value;
+  const venue = document.querySelector('input[name="venue"]:checked')?.value;
+  const venueSection = document.getElementById('venue-section');
+  const discordSection = document.getElementById('discord-section');
+  if (!venueSection) return;
+  const showVenue = IS_HYBRID && (status === 'attending' || status === 'maybe');
+  venueSection.classList.toggle('hidden', !showVenue);
+  discordSection.classList.toggle('hidden', !(showVenue && venue === 'remote'));
+}
+document.addEventListener('DOMContentLoaded', updateRsvpFields);
+</script>
 
 <script>
 (function() {

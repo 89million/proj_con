@@ -11,6 +11,7 @@ from app.models import (
     BracketMatchup,
     Meetup,
     MeetupOption,
+    MeetupRsvp,
     MeetupVote,
     Season,
     SeasonParticipant,
@@ -489,3 +490,237 @@ async def test_complete_page_shows_meetup_cta(engine, test_user, complete_season
         resp = await client.get("/complete")
     assert resp.status_code == 200
     assert "Vote on meetup time" in resp.text
+
+
+# ---------------------------------------------------------------------------
+# RSVP
+# ---------------------------------------------------------------------------
+
+
+@pytest_asyncio.fixture
+async def finalized_meetup(db, complete_season_with_meetup):
+    """Returns a meetup finalized on opt1."""
+    _, meetup, opt1, _ = complete_season_with_meetup
+    meetup.finalized_option_id = opt1.id
+    await db.commit()
+    return meetup, opt1
+
+
+async def test_rsvp_submit_attending(engine, db, test_user, finalized_meetup):
+    """POST /meetup/rsvp saves an attending RSVP with in_person venue."""
+    meetup, _ = finalized_meetup
+    async with make_client(engine, test_user) as client:
+        resp = await client.post(
+            "/meetup/rsvp",
+            data={"status": "attending", "venue": "in_person"},
+        )
+    assert resp.status_code == 302
+
+    from sqlalchemy import select as sa_select
+
+    result = await db.execute(
+        sa_select(MeetupRsvp).where(
+            MeetupRsvp.meetup_id == meetup.id,
+            MeetupRsvp.user_id == test_user.id,
+        )
+    )
+    rsvp = result.scalar_one()
+    assert rsvp.status == "attending"
+    assert rsvp.venue == "in_person"
+    assert rsvp.discord_ok is None
+
+
+async def test_rsvp_remote_with_discord(engine, db, test_user, finalized_meetup):
+    """Remote RSVP with discord_ok=True is stored correctly."""
+    meetup, _ = finalized_meetup
+    async with make_client(engine, test_user) as client:
+        await client.post(
+            "/meetup/rsvp",
+            data={"status": "attending", "venue": "remote", "discord_ok": "true"},
+        )
+
+    from sqlalchemy import select as sa_select
+
+    result = await db.execute(sa_select(MeetupRsvp).where(MeetupRsvp.meetup_id == meetup.id))
+    rsvp = result.scalar_one()
+    assert rsvp.venue == "remote"
+    assert rsvp.discord_ok is True
+
+
+async def test_rsvp_not_attending_clears_venue(engine, db, test_user, finalized_meetup):
+    """not_attending status stores no venue even if one is passed."""
+    meetup, _ = finalized_meetup
+    async with make_client(engine, test_user) as client:
+        await client.post(
+            "/meetup/rsvp",
+            data={"status": "not_attending", "venue": "in_person"},
+        )
+
+    from sqlalchemy import select as sa_select
+
+    result = await db.execute(sa_select(MeetupRsvp).where(MeetupRsvp.meetup_id == meetup.id))
+    rsvp = result.scalar_one()
+    assert rsvp.status == "not_attending"
+    assert rsvp.venue is None
+    assert rsvp.discord_ok is None
+
+
+async def test_rsvp_update_overwrites_previous(engine, db, test_user, finalized_meetup):
+    """Submitting RSVP twice updates the existing row (upsert)."""
+    meetup, _ = finalized_meetup
+    async with make_client(engine, test_user) as client:
+        await client.post("/meetup/rsvp", data={"status": "attending", "venue": "in_person"})
+        await client.post("/meetup/rsvp", data={"status": "not_attending"})
+
+    from sqlalchemy import func as sa_func
+    from sqlalchemy import select as sa_select
+
+    count = await db.scalar(sa_select(sa_func.count()).where(MeetupRsvp.meetup_id == meetup.id))
+    assert count == 1
+
+    result = await db.execute(sa_select(MeetupRsvp).where(MeetupRsvp.meetup_id == meetup.id))
+    rsvp = result.scalar_one()
+    assert rsvp.status == "not_attending"
+
+
+async def test_rsvp_rejected_on_unfinalized_meetup(engine, test_user, complete_season_with_meetup):
+    """POST /meetup/rsvp on an unfinalized meetup redirects without saving."""
+    async with make_client(engine, test_user) as client:
+        resp = await client.post("/meetup/rsvp", data={"status": "attending", "venue": "in_person"})
+    assert resp.status_code == 302
+
+
+async def test_rsvp_summary_shown_on_meetup_page(
+    engine, db, test_user, test_admin, finalized_meetup
+):
+    """Finalized meetup page shows RSVP summary with attendee names."""
+    meetup, _ = finalized_meetup
+    db.add(
+        MeetupRsvp(meetup_id=meetup.id, user_id=test_user.id, status="attending", venue="in_person")
+    )
+    db.add(MeetupRsvp(meetup_id=meetup.id, user_id=test_admin.id, status="not_attending"))
+    await db.commit()
+
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/meetup")
+    assert resp.status_code == 200
+    assert "Coming" in resp.text
+    assert "Can't make it" in resp.text
+    assert "in person" in resp.text
+
+
+async def test_rsvp_maybe_with_remote_discord(engine, db, test_user, finalized_meetup):
+    """maybe status with remote venue and discord is stored and displayed."""
+    meetup, _ = finalized_meetup
+    async with make_client(engine, test_user) as client:
+        await client.post(
+            "/meetup/rsvp",
+            data={"status": "maybe", "venue": "remote", "discord_ok": "true"},
+        )
+
+    from sqlalchemy import select as sa_select
+
+    result = await db.execute(sa_select(MeetupRsvp).where(MeetupRsvp.meetup_id == meetup.id))
+    rsvp = result.scalar_one()
+    assert rsvp.status == "maybe"
+    assert rsvp.venue == "remote"
+    assert rsvp.discord_ok is True
+
+
+async def test_rsvp_invalid_status_ignored(engine, db, test_user, finalized_meetup):
+    """An invalid status value redirects without creating a row."""
+    meetup, _ = finalized_meetup
+    async with make_client(engine, test_user) as client:
+        resp = await client.post("/meetup/rsvp", data={"status": "yes_definitely"})
+    assert resp.status_code == 302
+
+    from sqlalchemy import func as sa_func
+    from sqlalchemy import select as sa_select
+
+    count = await db.scalar(sa_select(sa_func.count()).where(MeetupRsvp.meetup_id == meetup.id))
+    assert count == 0
+
+
+# ---------------------------------------------------------------------------
+# Admin option update (location + is_hybrid)
+# ---------------------------------------------------------------------------
+
+
+async def test_admin_can_update_location(engine, db, test_admin, finalized_meetup):
+    """Admin can update the finalized option's location."""
+    meetup, opt1 = finalized_meetup
+    async with make_client(engine, test_admin) as client:
+        resp = await client.post(
+            f"/admin/meetup/option/{opt1.id}",
+            data={"location": "Chris's place — 42 Elm St", "is_hybrid": ""},
+        )
+    assert resp.status_code == 302
+
+    await db.refresh(opt1)
+    assert opt1.location == "Chris's place — 42 Elm St"
+    assert opt1.is_hybrid is False
+
+
+async def test_admin_can_set_hybrid(engine, db, test_admin, finalized_meetup):
+    """Admin can mark the finalized option as hybrid."""
+    meetup, opt1 = finalized_meetup
+    async with make_client(engine, test_admin) as client:
+        await client.post(
+            f"/admin/meetup/option/{opt1.id}",
+            data={"location": "Hybrid — Library + Discord", "is_hybrid": "true"},
+        )
+
+    await db.refresh(opt1)
+    assert opt1.is_hybrid is True
+
+
+async def test_only_finalized_option_url_accepted(engine, db, test_admin, finalized_meetup):
+    """Update is rejected (redirect) when URL option_id is not the finalized option."""
+    meetup, opt1 = finalized_meetup
+    wrong_id = opt1.id + 999
+    async with make_client(engine, test_admin) as client:
+        resp = await client.post(
+            f"/admin/meetup/option/{wrong_id}",
+            data={"location": "Sneaky change", "is_hybrid": ""},
+        )
+    assert resp.status_code == 302
+    await db.refresh(opt1)
+    assert opt1.location == "Monk"
+
+
+async def test_admin_cannot_update_non_finalized_option(
+    engine, db, test_admin, complete_season_with_meetup
+):
+    """Admin update is rejected if the option isn't the finalized one."""
+    _, meetup, opt1, opt2 = complete_season_with_meetup
+    meetup.finalized_option_id = opt1.id
+    await db.commit()
+
+    async with make_client(engine, test_admin) as client:
+        resp = await client.post(
+            f"/admin/meetup/option/{opt2.id}",
+            data={"location": "Wrong option", "is_hybrid": ""},
+        )
+    assert resp.status_code == 302
+
+    from sqlalchemy import select as sa_select
+
+    result = await db.execute(sa_select(MeetupOption).where(MeetupOption.id == opt2.id))
+    opt = result.scalar_one()
+    assert opt.location == "Mixed session"
+
+
+async def test_hybrid_flag_controls_venue_section_in_page(engine, db, test_admin, finalized_meetup):
+    """IS_HYBRID JS var is true only when is_hybrid is set on the finalized option."""
+    meetup, opt1 = finalized_meetup
+
+    async with make_client(engine, test_admin) as client:
+        resp = await client.get("/meetup")
+    assert "IS_HYBRID = false" in resp.text
+
+    opt1.is_hybrid = True
+    await db.commit()
+
+    async with make_client(engine, test_admin) as client:
+        resp = await client.get("/meetup")
+    assert "IS_HYBRID = true" in resp.text

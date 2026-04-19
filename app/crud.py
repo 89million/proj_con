@@ -18,6 +18,7 @@ from app.models import (
     IdeaUpvote,
     Meetup,
     MeetupOption,
+    MeetupRsvp,
     MeetupVote,
     ReadBook,
     Season,
@@ -1317,3 +1318,53 @@ async def admin_finalize_meetup(db: AsyncSession, meetup: Meetup, option_id: int
 async def update_meetup_deadline(db: AsyncSession, meetup: Meetup, new_deadline: datetime) -> None:
     meetup.deadline = new_deadline
     await db.commit()
+
+
+async def update_option_details(
+    db: AsyncSession,
+    option_id: int,
+    location: str,
+    is_hybrid: bool,
+) -> None:
+    result = await db.execute(select(MeetupOption).where(MeetupOption.id == option_id))
+    option = result.scalar_one_or_none()
+    if option:
+        option.location = location
+        option.is_hybrid = is_hybrid
+        await db.commit()
+
+
+async def upsert_rsvp(
+    db: AsyncSession,
+    meetup_id: int,
+    user_id: int,
+    status: str,
+    venue: str | None,
+    discord_ok: bool | None,
+) -> MeetupRsvp:
+    result = await db.execute(
+        select(MeetupRsvp).where(
+            MeetupRsvp.meetup_id == meetup_id,
+            MeetupRsvp.user_id == user_id,
+        )
+    )
+    rsvp = result.scalar_one_or_none()
+    if rsvp is None:
+        rsvp = MeetupRsvp(meetup_id=meetup_id, user_id=user_id)
+        db.add(rsvp)
+    rsvp.status = status
+    rsvp.venue = venue
+    rsvp.discord_ok = discord_ok
+    rsvp.updated_at = datetime.utcnow()
+    await db.commit()
+    return rsvp
+
+
+async def get_rsvps_for_meetup(db: AsyncSession, meetup_id: int) -> list[MeetupRsvp]:
+    result = await db.execute(
+        select(MeetupRsvp)
+        .where(MeetupRsvp.meetup_id == meetup_id)
+        .options(selectinload(MeetupRsvp.user))
+        .order_by(MeetupRsvp.updated_at)
+    )
+    return list(result.scalars().all())

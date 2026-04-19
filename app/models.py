@@ -304,6 +304,7 @@ class MeetupOption(Base):
     proposed_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     event_datetime: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     location: Mapped[str] = mapped_column(String, nullable=False)
+    is_hybrid: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     meetup: Mapped["Meetup"] = relationship(
@@ -328,4 +329,25 @@ class MeetupVote(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
 
     option: Mapped["MeetupOption"] = relationship("MeetupOption", back_populates="votes")
+    user: Mapped["User"] = relationship("User")
+
+
+class MeetupRsvp(Base):
+    """A member's RSVP for a finalized meetup. Always editable."""
+
+    __tablename__ = "meetup_rsvps"
+    __table_args__ = (UniqueConstraint("meetup_id", "user_id", name="uq_one_rsvp_per_meetup_user"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    meetup_id: Mapped[int] = mapped_column(ForeignKey("meetups.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    # "attending" | "maybe" | "not_attending"
+    status: Mapped[str] = mapped_column(String, nullable=False)
+    # "in_person" | "remote" — null when not_attending
+    venue: Mapped[str | None] = mapped_column(String, nullable=True)
+    # null unless venue == "remote"
+    discord_ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    meetup: Mapped["Meetup"] = relationship("Meetup")
     user: Mapped["User"] = relationship("User")

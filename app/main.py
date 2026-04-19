@@ -25,7 +25,7 @@ from app.auth import (
 )
 from app.config import settings
 from app.database import get_db
-from app.models import IdeaStatus, ReadBook, SeasonState, User
+from app.models import IdeaStatus, MeetupRsvp, ReadBook, SeasonState, User
 
 
 class NoCacheMiddleware(BaseHTTPMiddleware):
@@ -1587,11 +1587,16 @@ async def meetup_page(
 
     voted_ids: set[int] = set()
     winner_book = None
+    rsvps: list[MeetupRsvp] = []
+    my_rsvp: MeetupRsvp | None = None
     if meetup:
         voted_ids = {
             v.option_id for opt in meetup.options for v in opt.votes if v.user_id == user.id
         }
         winner_book = await crud.get_winner_book_for_season(db, meetup.season_id)
+        if meetup.finalized_option_id:
+            rsvps = await crud.get_rsvps_for_meetup(db, meetup.id)
+            my_rsvp = next((r for r in rsvps if r.user_id == user.id), None)
 
     # Stable order by creation time so cards don't jump around after voting.
     # Vote counts are shown on each card — no need to reorder by popularity.
@@ -1606,8 +1611,31 @@ async def meetup_page(
             "sorted_options": sorted_options,
             "voted_ids": voted_ids,
             "winner_book": winner_book,
+            "rsvps": rsvps,
+            "my_rsvp": my_rsvp,
         },
     )
+
+
+@app.post("/meetup/rsvp", response_class=HTMLResponse)
+async def submit_meetup_rsvp(
+    status: str = Form(...),
+    venue: str | None = Form(None),
+    discord_ok: bool = Form(False),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    meetup = await crud.get_active_meetup_shallow(db)
+    if not meetup or not meetup.finalized_option_id:
+        return RedirectResponse("/meetup", status_code=302)
+    if status not in ("attending", "maybe", "not_attending"):
+        return RedirectResponse("/meetup", status_code=302)
+    resolved_venue = (
+        venue if status in ("attending", "maybe") and venue in ("in_person", "remote") else None
+    )
+    resolved_discord = discord_ok if resolved_venue == "remote" else None
+    await crud.upsert_rsvp(db, meetup.id, user.id, status, resolved_venue, resolved_discord)
+    return RedirectResponse("/meetup", status_code=302)
 
 
 @app.post("/meetup/option", response_class=HTMLResponse)
@@ -1715,6 +1743,21 @@ async def update_meetup_deadline(
     except (ValueError, TypeError):
         return RedirectResponse("/meetup", status_code=302)
     await crud.update_meetup_deadline(db, meetup, new_deadline)
+    return RedirectResponse("/meetup", status_code=302)
+
+
+@app.post("/admin/meetup/option/{option_id}", response_class=HTMLResponse)
+async def admin_update_option(
+    option_id: int,
+    location: str = Form(...),
+    is_hybrid: bool = Form(False),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    meetup = await crud.get_active_meetup_shallow(db)
+    if not meetup or meetup.finalized_option_id != option_id:
+        return RedirectResponse("/meetup", status_code=302)
+    await crud.update_option_details(db, option_id, location.strip(), is_hybrid)
     return RedirectResponse("/meetup", status_code=302)
 
 
