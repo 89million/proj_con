@@ -96,7 +96,7 @@
     </button>
   </form>
 
-  {% if past_picks is defined and past_picks %}
+  {% if (past_picks is defined and past_picks) or (promoted_past_picks is defined and promoted_past_picks) %}
   <div class="mt-6">
     <h2 class="text-sm font-semibold text-forest-500 mb-2">Your past picks</h2>
     <p class="text-xs text-forest-300 mb-2">Tap to fill the form above</p>
@@ -110,6 +110,14 @@
         <span class="font-medium text-forest-700 text-sm">{{ book.title }}</span>
         <span class="text-forest-400 text-xs">by {{ book.author }}</span>
         <span class="text-forest-300 text-xs">({{ book.page_count }}pp)</span>
+      </li>
+      {% endfor %}
+      {% for book in promoted_past_picks %}
+      <li class="bg-forest-50 border border-forest-100 rounded-lg px-3 py-2 opacity-60 cursor-not-allowed">
+        <span class="font-medium text-forest-600 text-sm">{{ book.title }}</span>
+        <span class="text-forest-400 text-xs">by {{ book.author }}</span>
+        <span class="text-forest-300 text-xs">({{ book.page_count }}pp)</span>
+        <span class="ml-2 text-xs bg-forest-100 text-forest-500 px-1.5 py-0.5 rounded-full">Already promoted this season</span>
       </li>
       {% endfor %}
     </ul>

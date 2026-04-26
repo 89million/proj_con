@@ -1075,9 +1075,12 @@ async def get_books_by_user(db: AsyncSession, user_id: int) -> list[Book]:
 async def get_resubmittable_books(
     db: AsyncSession, user_id: int, current_season_id: int
 ) -> list[Book]:
-    """Past submissions by this user that aren't blocked (not in read_books table)."""
+    """Past submissions by this user that aren't blocked for the current season."""
     read_books = await get_all_read_books(db)
     blocked_titles = {(rb.title.lower(), rb.author.lower()) for rb in read_books}
+
+    current_season_books = await get_books_for_season(db, current_season_id)
+    already_in_season = {(b.title.lower(), b.author.lower()) for b in current_season_books}
 
     result = await db.execute(
         select(Book)
@@ -1086,16 +1089,33 @@ async def get_resubmittable_books(
     )
     books = list(result.scalars().all())
 
-    # Dedupe by title+author (keep most recent) and exclude blocked
+    # Dedupe by title+author (keep most recent) and exclude blocked or already present
     seen: set[tuple[str, str]] = set()
     resubmittable = []
     for book in books:
         key = (book.title.lower(), book.author.lower())
-        if key in seen or key in blocked_titles:
+        if key in seen or key in blocked_titles or key in already_in_season:
             continue
         seen.add(key)
         resubmittable.append(book)
     return resubmittable
+
+
+async def get_promoted_past_picks(
+    db: AsyncSession, user_id: int, current_season_id: int
+) -> list[Book]:
+    """Current-season promoted books that this user submitted in a prior season."""
+    result = await db.execute(
+        select(Book).where(Book.season_id == current_season_id, Book.promoted == True)  # noqa: E712
+    )
+    promoted = list(result.scalars().all())
+
+    past_result = await db.execute(
+        select(Book).where(Book.submitter_id == user_id, Book.season_id != current_season_id)
+    )
+    past_titles = {(b.title.lower(), b.author.lower()) for b in past_result.scalars().all()}
+
+    return [b for b in promoted if (b.title.lower(), b.author.lower()) in past_titles]
 
 
 async def get_season_count_for_user(db: AsyncSession, user_id: int) -> int:

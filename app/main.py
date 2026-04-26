@@ -310,6 +310,11 @@ async def submit_page(
         if not my_book and not is_spectator
         else []
     )
+    promoted_past_picks = (
+        await crud.get_promoted_past_picks(db, user.id, season.id)
+        if not my_book and not is_spectator
+        else []
+    )
 
     deadline = season.submit_deadline
 
@@ -326,6 +331,7 @@ async def submit_page(
             "is_spectator": is_spectator,
             "phase_deadline": deadline,
             "phase_name": "Submissions",
+            "promoted_past_picks": promoted_past_picks,
         },
     )
 
