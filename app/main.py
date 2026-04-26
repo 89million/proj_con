@@ -1,9 +1,10 @@
 """FastAPI application — all routes."""
 
+import asyncio
 import html as _html
 import math
 import statistics
-import time
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
 import httpx
@@ -24,8 +25,36 @@ from app.auth import (
     get_or_create_user,
 )
 from app.config import settings
-from app.database import get_db
+from app.database import AsyncSessionLocal, get_db
 from app.models import IdeaStatus, MeetupRsvp, ReadBook, SeasonState, User
+
+
+async def _background_checker() -> None:
+    """Run deadline checks and 24h reminders every 60 seconds."""
+    while True:
+        await asyncio.sleep(60)
+        try:
+            async with AsyncSessionLocal() as db:
+                season = await crud.get_active_season(db)
+                if season and season.state != SeasonState.complete:
+                    await state.check_deadline_and_advance(db, season)
+                    await state.check_24h_reminders(db, season)
+                meetup = await crud.get_active_meetup(db)
+                if meetup and not meetup.finalized_option_id:
+                    await state.check_meetup_24h_reminder(db, meetup)
+        except Exception:
+            pass  # fail silently — retries next iteration
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = asyncio.create_task(_background_checker())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
 
 
 class NoCacheMiddleware(BaseHTTPMiddleware):
@@ -36,29 +65,8 @@ class NoCacheMiddleware(BaseHTTPMiddleware):
         return response
 
 
-app = FastAPI(title="Stumbling Book Club")
+app = FastAPI(title="Stumbling Book Club", lifespan=lifespan)
 app.add_middleware(NoCacheMiddleware)
-
-# Deadline auto-advance: check once per 60 seconds on GET requests
-_last_deadline_check: float = 0.0
-
-
-@app.middleware("http")
-async def deadline_check_middleware(request, call_next):
-    global _last_deadline_check
-    response = await call_next(request)
-    if request.method == "GET":
-        now = time.monotonic()
-        if now - _last_deadline_check > 60:
-            _last_deadline_check = now
-            try:
-                async for db in get_db():
-                    season = await crud.get_active_season(db)
-                    if season and season.state not in (SeasonState.complete,):
-                        await state.check_deadline_and_advance(db, season)
-            except Exception:
-                pass  # fail silently — will retry next request
-    return response
 
 
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -1291,7 +1299,7 @@ async def create_season(
     if submit_days > 0:
         season.submit_deadline = now + timedelta(days=submit_days)
     if ranking_days > 0:
-        season.ranking_deadline = now + timedelta(days=submit_days + ranking_days)
+        season.ranking_days = ranking_days
     if bracket_round_hours > 0:
         season.bracket_round_hours = bracket_round_hours
     await db.commit()
@@ -1330,10 +1338,23 @@ async def create_season(
         email_subject=f"{season.name} — Submit your book!",
         email_body=(
             f"<h2>{season.name} is open!</h2>"
-            f"<p>A new season has started. Head to the site and nominate the book "
-            f"you want the club to read.</p>"
+            f"<p>A new season has started — nominate the book you want the club to read.</p>"
+            f"<h3 style='margin-top:1.5em'>How a season works</h3>"
+            f"<ol style='padding-left:1.2em;line-height:1.8'>"
+            f"<li><strong>📚 Submit</strong> — Everyone nominates one book. "
+            f"Popular picks from last season are promoted automatically.</li>"
+            f"<li><strong>🗳️ Rank</strong> — Once all books are in, rank them "
+            f"from favourite to least. Points are tallied to seed the bracket.</li>"
+            f"<li><strong>🏟️ Bracket</strong> — Bottom seeds are cut, the rest "
+            f"face off in single-elimination. Rounds advance once everyone has voted.</li>"
+            f"<li><strong>🎉 Winner + Meetup</strong> — The finalist is our next read! "
+            f"A scheduling poll opens to pick when and where we meet.</li>"
+            f"</ol>"
             f"{deadline_html}"
-            f'<p><a href="{settings.app_base_url}/submit">Submit your book →</a></p>'
+            f'<p><a href="{settings.app_base_url}/submit">Nominate your book →</a></p>'
+            f'<p style="font-size:0.85em;color:#888">'
+            f'<a href="{settings.app_base_url}/how-it-works">Full details on how it works</a>'
+            f"</p>"
         ),
     )
 

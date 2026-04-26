@@ -50,6 +50,8 @@ async def maybe_advance_from_submit(
     total_participants = await crud.count_participants(db, season.id)
 
     if force or (total_participants > 0 and submissions >= total_participants):
+        if season.ranking_days and not season.ranking_deadline:
+            season.ranking_deadline = datetime.utcnow() + timedelta(days=season.ranking_days)
         await crud.set_season_state(db, season, SeasonState.ranking)
         emails = await _participant_emails(db, season.id)
         url = settings.app_base_url
@@ -331,6 +333,93 @@ async def get_current_deadline(db: AsyncSession, season: Season) -> datetime | N
     if season.state == SeasonState.bracket:
         return await _get_bracket_round_deadline(db, season)
     return None
+
+
+async def check_24h_reminders(db: AsyncSession, season: Season) -> None:
+    """Fire a 24-hour reminder for the active phase deadline if not yet sent."""
+    now = datetime.utcnow()
+    window = timedelta(hours=24)
+    url = settings.app_base_url
+
+    if season.state == SeasonState.submit and season.submit_deadline:
+        deadline = season.submit_deadline
+        if timedelta(0) < deadline - now <= window and not season.submit_reminder_sent:
+            stragglers = await crud.users_who_havent_submitted(db, season.id)
+            emails = [u.email for u in stragglers if u.email and u.email_notifications]
+            await notify.send_deadline_reminder(
+                emails,
+                season.name,
+                "Book submission",
+                deadline.strftime("%a %b %d at %H:%M UTC"),
+                url,
+            )
+            season.submit_reminder_sent = True
+            await db.commit()
+
+    elif season.state == SeasonState.ranking and season.ranking_deadline:
+        deadline = season.ranking_deadline
+        if timedelta(0) < deadline - now <= window and not season.ranking_reminder_sent:
+            stragglers = await crud.users_who_havent_ranked(db, season.id)
+            emails = [u.email for u in stragglers if u.email and u.email_notifications]
+            await notify.send_deadline_reminder(
+                emails,
+                season.name,
+                "Book ranking",
+                deadline.strftime("%a %b %d at %H:%M UTC"),
+                url,
+            )
+            season.ranking_reminder_sent = True
+            await db.commit()
+
+    elif season.state == SeasonState.bracket and season.bracket_round_hours:
+        deadline = await _get_bracket_round_deadline(db, season)
+        current_round = await crud.get_current_bracket_round(db, season.id)
+        if deadline and current_round and timedelta(0) < deadline - now <= window:
+            if season.bracket_reminder_round != current_round:
+                stragglers = await crud.users_who_havent_voted_round(db, season.id, current_round)
+                emails = [u.email for u in stragglers if u.email and u.email_notifications]
+                await notify.send_deadline_reminder(
+                    emails,
+                    season.name,
+                    "Bracket round voting",
+                    deadline.strftime("%a %b %d at %H:%M UTC"),
+                    url,
+                )
+                season.bracket_reminder_round = current_round
+                await db.commit()
+
+
+async def check_meetup_24h_reminder(db: AsyncSession, meetup: "Meetup") -> None:  # noqa: F821
+    """Fire a 24-hour reminder before the meetup poll closes."""
+    now = datetime.utcnow()
+    window = timedelta(hours=24)
+    if not (timedelta(0) < meetup.deadline - now <= window) or meetup.reminder_sent:
+        return
+    from sqlalchemy import select as sa_select
+
+    from app.models import MeetupOption, MeetupVote
+
+    participants = await crud.get_participants_for_season(db, meetup.season_id)
+    result = await db.execute(
+        sa_select(MeetupVote.user_id)
+        .join(MeetupOption, MeetupVote.option_id == MeetupOption.id)
+        .where(MeetupOption.meetup_id == meetup.id)
+    )
+    voted_ids = set(result.scalars().all())
+    emails = [
+        u.email for u in participants if u.id not in voted_ids and u.email and u.email_notifications
+    ]
+    season = await crud.get_season_by_id(db, meetup.season_id)
+    season_name = season.name if season else "Meetup poll"
+    await notify.send_deadline_reminder(
+        emails,
+        season_name,
+        "Meetup voting",
+        meetup.deadline.strftime("%a %b %d at %H:%M UTC"),
+        settings.app_base_url,
+    )
+    meetup.reminder_sent = True
+    await db.commit()
 
 
 async def check_deadline_and_advance(db: AsyncSession, season: Season) -> bool:

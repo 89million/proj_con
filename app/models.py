@@ -68,9 +68,13 @@ class Season(Base):
     state: Mapped[SeasonState] = mapped_column(Enum(SeasonState), default=SeasonState.submit)
     page_limit: Mapped[int] = mapped_column(Integer, default=400)
     submit_deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    ranking_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ranking_deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     bracket_round_hours: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_nudge_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    submit_reminder_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    ranking_reminder_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    bracket_reminder_round: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     books: Mapped[list["Book"]] = relationship("Book", back_populates="season")
@@ -283,6 +287,7 @@ class Meetup(Base):
     season_id: Mapped[int] = mapped_column(ForeignKey("seasons.id"), unique=True, nullable=False)
     deadline: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     finalized_option_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    reminder_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     season: Mapped["Season"] = relationship("Season")

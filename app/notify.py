@@ -55,6 +55,28 @@ async def notify_all(
     await send_email(emails, email_subject, email_body)
 
 
+async def send_deadline_reminder(
+    emails: list[str],
+    season_name: str,
+    phase: str,
+    deadline_str: str,
+    app_url: str,
+) -> None:
+    """Send a 24-hour deadline reminder to members who still need to act."""
+    discord_msg = (
+        f"⏰ **{season_name}** — {phase} closes in ~24 hours ({deadline_str}). "
+        f"If you haven't yet, head to the site now!"
+    )
+    email_subject = f"{season_name} — {phase} closes in 24 hours"
+    email_body = (
+        f"<h2>24-hour reminder</h2>"
+        f"<p><strong>{phase}</strong> for {season_name} closes at {deadline_str}.</p>"
+        f"<p>If you haven't acted yet, now's the time.</p>"
+        f'<p><a href="{app_url}">Head to the site →</a></p>'
+    )
+    await notify_all(emails, discord_msg, email_subject, email_body)
+
+
 async def send_nudge(
     straggler_names: list[str],
     straggler_emails: list[str],
