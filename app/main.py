@@ -555,6 +555,9 @@ async def bracket_page(
     # Build seed lookup: book_id -> seed number
     seed_map = {s.book_id: s.seed for s in seeds}
 
+    # Relegated books: seeded but not in any matchup
+    relegated_seeds = [s for s in seeds if s.book_id not in bracket_book_ids]
+
     prior_nominations = await crud.get_prior_nomination_counts(db, season.id)
     matchup_tiebreakers = {m.id: matchup_tiebreaker(m, prior_nominations) for m in all_matchups}
 
@@ -579,6 +582,7 @@ async def bracket_page(
             "is_spectator": is_spectator,
             "phase_deadline": deadline,
             "phase_name": "Bracket voting",
+            "relegated_seeds": relegated_seeds,
         },
     )
 

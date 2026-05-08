@@ -224,4 +224,23 @@
 </script>
 {% endif %}
 
+{% if relegated_seeds %}
+<div class="mt-8 pt-6 border-t border-forest-100">
+  <h2 class="text-sm font-semibold text-forest-400 mb-1">Didn't make the bracket</h2>
+  <p class="text-xs text-forest-300 mb-3">
+    {{ relegated_seeds | length }} book{{ 's' if relegated_seeds | length != 1 else '' }} ranked below the cutoff and were not included in the tournament.
+  </p>
+  <ul class="space-y-2">
+    {% for s in relegated_seeds %}
+    <li class="bg-forest-50 border border-forest-100 rounded-lg px-4 py-3 opacity-70">
+      <span class="text-xs font-bold text-forest-300 mr-1">#{{ s.seed }}</span>
+      <span class="font-medium text-forest-500">{{ s.book.title }}</span>
+      <span class="text-forest-400 text-sm"> — {{ s.book.author }}</span>
+      <span class="text-xs text-forest-300 ml-2">({{ s.book.page_count }}pp)</span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 {% endblock %}
