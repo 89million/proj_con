@@ -59,6 +59,11 @@
         Deadline: {{ current_deadline.strftime('%b %d at %H:%M UTC') }}
       </p>
       {% endif %}
+      <p class="w-full mt-1">
+        <a href="/admin/season/{{ active_season.id }}/activity" class="text-xs text-sound-500 hover:underline font-medium">
+          View full season activity →
+        </a>
+      </p>
     </div>
 
     <!-- Participant management -->
@@ -542,10 +547,13 @@
           <span class="font-medium text-forest-800">{{ s.name }}</span>
           <span class="font-mono text-forest-300 text-xs ml-2">{{ s.state.value }}</span>
         </div>
-        <form method="post" action="/admin/season/{{ s.id }}/delete"
-              onsubmit="return confirm('Delete season {{ s.name }}? This permanently removes all books, votes, and bracket data.')">
-          <button class="text-red-400 hover:text-red-600 text-xs font-medium">Delete season</button>
-        </form>
+        <div class="flex items-center gap-3">
+          <a href="/admin/season/{{ s.id }}/activity" class="text-xs text-sound-500 hover:underline font-medium">Activity</a>
+          <form method="post" action="/admin/season/{{ s.id }}/delete"
+                onsubmit="return confirm('Delete season {{ s.name }}? This permanently removes all books, votes, and bracket data.')">
+            <button class="text-red-400 hover:text-red-600 text-xs font-medium">Delete season</button>
+          </form>
+        </div>
       </div>
 
       {% if s.books %}

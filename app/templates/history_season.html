@@ -6,6 +6,9 @@
   <h1 class="font-serif text-3xl font-bold text-forest-700">{{ season.name }}</h1>
   <div class="flex items-center gap-4">
     <a href="/season/{{ season.id }}/recap" class="text-sound-500 text-sm font-medium hover:underline">View Recap</a>
+    {% if user.is_admin %}
+    <a href="/admin/season/{{ season.id }}/activity" class="text-forest-500 text-sm font-medium hover:underline">Full Activity</a>
+    {% endif %}
     <a href="/history" class="text-forest-400 text-sm hover:underline">← All seasons</a>
   </div>
 </div>

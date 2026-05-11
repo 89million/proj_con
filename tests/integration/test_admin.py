@@ -234,3 +234,37 @@ async def test_toggle_admin_role(client_as_admin, test_user, db):
     assert resp.status_code == 302
     await db.refresh(test_user)
     assert test_user.is_admin is False
+
+
+# ---------------------------------------------------------------------------
+# Season activity page
+# ---------------------------------------------------------------------------
+
+
+async def test_season_activity_page_renders(client_as_admin, active_season, a_book):
+    """GET /admin/season/{id}/activity returns 200 for an admin."""
+    resp = await client_as_admin.get(f"/admin/season/{active_season.id}/activity")
+    assert resp.status_code == 200
+    assert "Activity" in resp.text
+    assert "Submissions" in resp.text
+
+
+async def test_season_activity_shows_submitted_book(client_as_admin, active_season, a_book):
+    """The activity page lists submitted books."""
+    resp = await client_as_admin.get(f"/admin/season/{active_season.id}/activity")
+    assert resp.status_code == 200
+    assert a_book.title in resp.text
+
+
+async def test_season_activity_404_for_missing_season(client_as_admin):
+    """Returns 404 for a season that does not exist."""
+    resp = await client_as_admin.get("/admin/season/99999/activity")
+    assert resp.status_code == 404
+
+
+async def test_season_activity_non_admin_blocked(engine, test_user, active_season):
+    """A non-admin user gets 403 on the activity page."""
+    async with make_client_with_real_auth(engine, test_user) as client:
+        resp = await client.get(f"/admin/season/{active_season.id}/activity")
+    assert resp.status_code == 403
+    app.dependency_overrides.clear()

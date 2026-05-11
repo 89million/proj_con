@@ -26,7 +26,7 @@ from app.auth import (
 )
 from app.config import settings
 from app.database import AsyncSessionLocal, get_db
-from app.models import IdeaStatus, MeetupRsvp, ReadBook, SeasonState, User
+from app.models import IdeaStatus, Meetup, MeetupRsvp, ReadBook, SeasonState, User
 
 
 async def _background_checker() -> None:
@@ -1989,6 +1989,92 @@ async def admin_member_stats(
             "correct_votes": correct,
             "total_votes": total,
             "books_with_status": books_with_status,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Season Activity (admin)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/admin/season/{season_id}/activity", response_class=HTMLResponse)
+async def season_activity_page(
+    season_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    season = await crud.get_season_by_id(db, season_id)
+    if season is None:
+        raise HTTPException(status_code=404, detail="Season not found.")
+
+    participants = await crud.get_participants_for_season(db, season_id)
+    books = await crud.get_books_for_season(db, season_id)
+    all_borda_votes = await crud.get_all_borda_votes_for_season(db, season_id)
+    seeds = await crud.get_seeds_for_season(db, season_id)
+    matchups = await crud.get_matchups_for_season(db, season_id)
+
+    # Submission phase data
+    book_map = {b.id: b for b in books}
+    participant_map = {p.id: p for p in participants}
+    seed_map = {s.book_id: s.seed for s in seeds}
+
+    # Who has submitted (submitter_id -> book)
+    submitted_by: dict = {b.submitter_id: b for b in books}
+    not_submitted = [p for p in participants if p.id not in submitted_by]
+
+    # Rankings matrix: {user_id: {book_id: rank}}
+    rankings_by_user: dict[int, dict[int, int]] = {}
+    for v in all_borda_votes:
+        rankings_by_user.setdefault(v.user_id, {})[v.book_id] = v.rank
+    rankers = sorted(
+        [p for p in participants if p.id in rankings_by_user],
+        key=lambda p: p.name or p.email,
+    )
+    not_ranked = [p for p in participants if p.id not in rankings_by_user]
+    # Books sorted by seed (then by title if no seeds yet)
+    ranked_books = sorted(books, key=lambda b: (seed_map.get(b.id, 999), b.title))
+
+    # Bracket: group matchups by round, attach per-user votes
+    real_matchups = [m for m in matchups if m.book_a_id != m.book_b_id]
+    rounds: dict[int, list] = {}
+    for m in sorted(real_matchups, key=lambda m: (m.round, m.position)):
+        rounds.setdefault(m.round, []).append(m)
+    # Per-matchup: {user_id: book_id voted for}
+    votes_by_matchup: dict[int, dict[int, int]] = {}
+    for m in real_matchups:
+        votes_by_matchup[m.id] = {v.user_id: v.book_id for v in m.votes}
+
+    # Meetup RSVP (if exists for this season)
+    meetup_rsvps: list = []
+    meetup = None
+    result = await db.execute(select(Meetup).where(Meetup.season_id == season_id))
+    meetup = result.scalar_one_or_none()
+    if meetup:
+        meetup_rsvps = await crud.get_rsvps_for_meetup(db, meetup.id)
+
+    return templates.TemplateResponse(
+        "admin_season_activity.html",
+        {
+            "request": request,
+            "user": user,
+            "season": season,
+            "participants": participants,
+            "participant_map": participant_map,
+            "books": books,
+            "book_map": book_map,
+            "seed_map": seed_map,
+            "submitted_by": submitted_by,
+            "not_submitted": not_submitted,
+            "rankings_by_user": rankings_by_user,
+            "rankers": rankers,
+            "not_ranked": not_ranked,
+            "ranked_books": ranked_books,
+            "rounds": rounds,
+            "votes_by_matchup": votes_by_matchup,
+            "meetup": meetup,
+            "meetup_rsvps": meetup_rsvps,
         },
     )
 

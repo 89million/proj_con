@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% block title %}{{ season.name }} — Activity{% endblock %}
+{% block content %}
+
+<div class="mb-6 flex items-center justify-between flex-wrap gap-2">
+  <div>
+    <h1 class="text-2xl font-bold text-forest-700">{{ season.name }} — Activity</h1>
+    <p class="text-forest-400 text-sm mt-0.5">Full tip-to-tail view · Admin only</p>
+  </div>
+  <div class="flex gap-3 text-sm">
+    <a href="/admin" class="text-forest-400 hover:underline">← Admin</a>
+    {% if season.state == 'complete' %}
+    <a href="/history/{{ season.id }}" class="text-forest-400 hover:underline">Season details</a>
+    <a href="/season/{{ season.id }}/recap" class="text-forest-400 hover:underline">Recap</a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ========== SUBMISSIONS ========== -->
+<section class="mb-8">
+  <h2 class="text-base font-semibold text-forest-600 mb-3">
+    Submissions
+    <span class="text-xs font-normal text-forest-300 ml-2">{{ books | length }} of {{ participants | length }} members</span>
+  </h2>
+
+  {% if books %}
+  <div class="bg-white border border-forest-100 rounded-xl shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-forest-50 text-forest-500 text-xs uppercase tracking-wide">
+        <tr>
+          <th class="text-left px-4 py-2">Member</th>
+          <th class="text-left px-4 py-2">Book</th>
+          <th class="text-left px-4 py-2 hidden sm:table-cell">Author</th>
+          <th class="text-right px-4 py-2 hidden sm:table-cell">Pages</th>
+          <th class="text-right px-4 py-2 hidden md:table-cell">Submitted</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-forest-50">
+        {% for book in books | sort(attribute='submitted_at') %}
+        <tr class="hover:bg-forest-50/50">
+          <td class="px-4 py-2.5 text-forest-600 font-medium">
+            {{ book.submitter.name or book.submitter.email }}
+          </td>
+          <td class="px-4 py-2.5">
+            <span class="font-medium text-forest-800">{{ book.title }}</span>
+            {% if book.promoted %}<span class="ml-1 text-xs bg-sound-100 text-sound-600 px-1.5 py-0.5 rounded-full">promoted</span>{% endif %}
+            <span class="sm:hidden text-forest-400 text-xs block">{{ book.author }} · {{ book.page_count }}pp</span>
+          </td>
+          <td class="px-4 py-2.5 text-forest-500 hidden sm:table-cell">{{ book.author }}</td>
+          <td class="px-4 py-2.5 text-forest-400 text-right hidden sm:table-cell">{{ book.page_count }}</td>
+          <td class="px-4 py-2.5 text-forest-300 text-xs text-right hidden md:table-cell">
+            {{ book.submitted_at.strftime('%b %-d, %H:%M') if book.submitted_at else '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if not_submitted %}
+  <div class="mt-2 flex flex-wrap gap-2">
+    <span class="text-xs text-forest-400">Waiting on:</span>
+    {% for p in not_submitted %}
+    <span class="text-xs bg-red-50 text-red-400 border border-red-100 px-2 py-0.5 rounded-full">
+      {{ p.name or p.email }}
+    </span>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+<!-- ========== RANKINGS ========== -->
+<section class="mb-8">
+  <h2 class="text-base font-semibold text-forest-600 mb-3">
+    Rankings
+    <span class="text-xs font-normal text-forest-300 ml-2">{{ rankers | length }} of {{ participants | length }} members ranked</span>
+  </h2>
+
+  {% if rankers and ranked_books %}
+  <div class="bg-white border border-forest-100 rounded-xl shadow-sm overflow-x-auto">
+    <table class="text-xs min-w-max w-full">
+      <thead class="bg-forest-50 text-forest-500 uppercase tracking-wide">
+        <tr>
+          <th class="text-left px-4 py-2 sticky left-0 bg-forest-50 z-10">Book</th>
+          <th class="text-center px-3 py-2 text-forest-300">Seed</th>
+          {% for p in rankers %}
+          <th class="text-center px-3 py-2 whitespace-nowrap font-medium text-forest-600">
+            {{ (p.name or p.email).split(' ')[0] }}
+          </th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-forest-50">
+        {% for book in ranked_books %}
+        {% set seed_num = seed_map.get(book.id) %}
+        <tr class="hover:bg-forest-50/50 {% if not seed_num %}opacity-60{% endif %}">
+          <td class="px-4 py-2 sticky left-0 bg-white z-10 font-medium text-forest-800">
+            {{ book.title }}
+            <span class="text-forest-400 font-normal">— {{ book.author }}</span>
+          </td>
+          <td class="px-3 py-2 text-center">
+            {% if seed_num %}
+            <span class="font-bold text-forest-500">#{{ seed_num }}</span>
+            {% else %}
+            <span class="text-forest-200">—</span>
+            {% endif %}
+          </td>
+          {% for p in rankers %}
+          {% set rank = rankings_by_user.get(p.id, {}).get(book.id) %}
+          <td class="px-3 py-2 text-center">
+            {% if rank %}
+            <span class="inline-block w-6 h-6 rounded-full text-center leading-6
+              {% if rank == 1 %}bg-forest-500 text-white font-bold
+              {% elif rank == 2 %}bg-forest-300 text-white font-semibold
+              {% elif rank == ranked_books | length %}bg-red-100 text-red-400
+              {% else %}text-forest-400{% endif %}">
+              {{ rank }}
+            </span>
+            {% else %}
+            <span class="text-forest-200">—</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <p class="text-xs text-forest-300 mt-1">1 = top choice. Green dot = #1 pick, red = last.</p>
+
+  {% elif not rankers %}
+  <p class="text-forest-300 text-sm italic">No rankings submitted yet.</p>
+  {% endif %}
+
+  {% if not_ranked %}
+  <div class="mt-2 flex flex-wrap gap-2">
+    <span class="text-xs text-forest-400">Haven't ranked:</span>
+    {% for p in not_ranked %}
+    <span class="text-xs bg-red-50 text-red-400 border border-red-100 px-2 py-0.5 rounded-full">
+      {{ p.name or p.email }}
+    </span>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+<!-- ========== BRACKET ========== -->
+{% if rounds %}
+<section class="mb-8">
+  <h2 class="text-base font-semibold text-forest-600 mb-3">Bracket Votes</h2>
+
+  {% for round_num in rounds | sort %}
+  {% set round_matchups = rounds[round_num] %}
+  <div class="mb-5">
+    <h3 class="text-sm font-semibold text-forest-500 mb-2">
+      Round {{ round_num }}
+      {% if round_num == rounds | sort | list | last %}<span class="text-sound-400">(Final)</span>{% endif %}
+    </h3>
+    <div class="space-y-3">
+      {% for matchup in round_matchups %}
+      {% set matchup_votes = votes_by_matchup.get(matchup.id, {}) %}
+      <div class="bg-white border border-forest-100 rounded-xl p-4 shadow-sm">
+        <!-- Matchup header -->
+        <div class="flex items-center gap-2 mb-3 flex-wrap">
+          <span class="font-medium text-forest-800">
+            {% if seed_map.get(matchup.book_a_id) %}#{{ seed_map[matchup.book_a_id] }} {% endif %}{{ matchup.book_a.title }}
+          </span>
+          <span class="text-forest-300 text-xs">vs</span>
+          <span class="font-medium text-forest-800">
+            {% if seed_map.get(matchup.book_b_id) %}#{{ seed_map[matchup.book_b_id] }} {% endif %}{{ matchup.book_b.title }}
+          </span>
+          {% if matchup.winner_id %}
+          <span class="ml-auto text-xs bg-forest-100 text-forest-600 px-2 py-0.5 rounded-full font-semibold">
+            Winner: {{ matchup.winner.title }}
+          </span>
+          {% else %}
+          <span class="ml-auto text-xs bg-sound-50 text-sound-500 px-2 py-0.5 rounded-full">pending</span>
+          {% endif %}
+        </div>
+
+        <!-- Per-member votes -->
+        <div class="flex flex-wrap gap-2">
+          {% for p in participants %}
+          {% set voted_for = matchup_votes.get(p.id) %}
+          <div class="flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg border
+            {% if voted_for == matchup.book_a_id %}bg-forest-50 border-forest-200 text-forest-700
+            {% elif voted_for == matchup.book_b_id %}bg-sound-50 border-sound-200 text-sound-700
+            {% else %}bg-gray-50 border-gray-100 text-forest-300{% endif %}">
+            <span class="font-medium">{{ (p.name or p.email).split(' ')[0] }}</span>
+            {% if voted_for %}
+            <span class="text-forest-400">→</span>
+            <span class="italic">{{ book_map[voted_for].title if voted_for in book_map else '?' }}</span>
+            {% else %}
+            <span class="italic">no vote</span>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+
+        <!-- Vote tally -->
+        {% if matchup.winner_id or matchup_votes %}
+        {% set a_votes = matchup_votes.values() | select('equalto', matchup.book_a_id) | list | length %}
+        {% set b_votes = matchup_votes.values() | select('equalto', matchup.book_b_id) | list | length %}
+        <div class="mt-2 pt-2 border-t border-forest-50 text-xs text-forest-400">
+          {{ matchup.book_a.title }} <strong>{{ a_votes }}</strong> — {{ matchup.book_b.title }} <strong>{{ b_votes }}</strong>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<!-- ========== MEETUP RSVP ========== -->
+{% if meetup %}
+<section class="mb-8">
+  <h2 class="text-base font-semibold text-forest-600 mb-3">
+    Meetup RSVP
+    {% if meetup.finalized_option_id %}
+    <span class="text-xs font-normal text-forest-300 ml-2">location confirmed</span>
+    {% else %}
+    <span class="text-xs font-normal text-sound-400 ml-2">voting open</span>
+    {% endif %}
+  </h2>
+
+  {% if meetup_rsvps %}
+  <div class="bg-white border border-forest-100 rounded-xl shadow-sm overflow-hidden">
+    <table class="w-full text-sm">
+      <thead class="bg-forest-50 text-forest-500 text-xs uppercase tracking-wide">
+        <tr>
+          <th class="text-left px-4 py-2">Member</th>
+          <th class="text-left px-4 py-2">Status</th>
+          <th class="text-left px-4 py-2">Venue</th>
+          <th class="text-left px-4 py-2">Discord</th>
+          <th class="text-right px-4 py-2 hidden md:table-cell">Updated</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-forest-50">
+        {% for rsvp in meetup_rsvps %}
+        <tr class="hover:bg-forest-50/50">
+          <td class="px-4 py-2.5 font-medium text-forest-700">{{ rsvp.user.name or rsvp.user.email }}</td>
+          <td class="px-4 py-2.5">
+            {% if rsvp.status == 'attending' %}
+            <span class="text-xs bg-forest-100 text-forest-600 px-2 py-0.5 rounded-full font-semibold">Coming</span>
+            {% elif rsvp.status == 'maybe' %}
+            <span class="text-xs bg-sound-50 text-sound-600 px-2 py-0.5 rounded-full">Maybe</span>
+            {% else %}
+            <span class="text-xs bg-red-50 text-red-400 px-2 py-0.5 rounded-full">Can't make it</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-forest-500 text-sm">
+            {% if rsvp.venue == 'in_person' %}In person
+            {% elif rsvp.venue == 'remote' %}Remote
+            {% else %}<span class="text-forest-300">—</span>{% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-sm">
+            {% if rsvp.venue == 'remote' %}
+            {% if rsvp.discord_ok %}
+            <span class="text-forest-500">Yes</span>
+            {% elif rsvp.discord_ok == false %}
+            <span class="text-forest-300">No</span>
+            {% else %}<span class="text-forest-200">—</span>{% endif %}
+            {% else %}<span class="text-forest-200">—</span>{% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-forest-300 text-xs text-right hidden md:table-cell">
+            {{ rsvp.updated_at.strftime('%b %-d, %H:%M') if rsvp.updated_at else '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Members who haven't RSVPed -->
+  {% set rsvped_ids = meetup_rsvps | map(attribute='user_id') | list %}
+  {% set no_rsvp = participants | selectattr('id', 'not in', rsvped_ids) | list %}
+  {% if no_rsvp %}
+  <div class="mt-2 flex flex-wrap gap-2">
+    <span class="text-xs text-forest-400">No RSVP yet:</span>
+    {% for p in no_rsvp %}
+    <span class="text-xs bg-gray-50 text-forest-400 border border-forest-100 px-2 py-0.5 rounded-full">
+      {{ p.name or p.email }}
+    </span>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% else %}
+  <p class="text-forest-300 text-sm italic">No RSVPs yet.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% endblock %}
