@@ -30,7 +30,7 @@ from app.models import IdeaStatus, Meetup, MeetupRsvp, ReadBook, SeasonState, Us
 
 
 async def _background_checker() -> None:
-    """Run deadline checks and 24h reminders every 60 seconds."""
+    """Run deadline checks, 24h reminders, and 1h urgent reminders every 60 seconds."""
     while True:
         await asyncio.sleep(60)
         try:
@@ -39,9 +39,11 @@ async def _background_checker() -> None:
                 if season and season.state != SeasonState.complete:
                     await state.check_deadline_and_advance(db, season)
                     await state.check_24h_reminders(db, season)
+                    await state.check_1h_reminders(db, season)
                 meetup = await crud.get_active_meetup(db)
                 if meetup and not meetup.finalized_option_id:
                     await state.check_meetup_24h_reminder(db, meetup)
+                    await state.check_meetup_1h_reminder(db, meetup)
         except Exception:
             pass  # fail silently — retries next iteration
 
