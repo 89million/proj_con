@@ -1787,13 +1787,21 @@ async def admin_update_option(
     option_id: int,
     location: str = Form(...),
     is_hybrid: bool = Form(False),
+    event_date: str = Form(""),
+    event_time: str = Form(""),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_admin),
 ):
     meetup = await crud.get_active_meetup_shallow(db)
     if not meetup or meetup.finalized_option_id != option_id:
         return RedirectResponse("/meetup", status_code=302)
-    await crud.update_option_details(db, option_id, location.strip(), is_hybrid)
+    event_datetime = None
+    if event_date and event_time:
+        try:
+            event_datetime = datetime.strptime(f"{event_date} {event_time}", "%Y-%m-%d %H:%M")
+        except ValueError:
+            pass
+    await crud.update_option_details(db, option_id, location.strip(), is_hybrid, event_datetime)
     return RedirectResponse("/meetup", status_code=302)
 
 

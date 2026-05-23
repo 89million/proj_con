@@ -1345,12 +1345,15 @@ async def update_option_details(
     option_id: int,
     location: str,
     is_hybrid: bool,
+    event_datetime: datetime | None = None,
 ) -> None:
     result = await db.execute(select(MeetupOption).where(MeetupOption.id == option_id))
     option = result.scalar_one_or_none()
     if option:
         option.location = location
         option.is_hybrid = is_hybrid
+        if event_datetime is not None:
+            option.event_datetime = event_datetime
         await db.commit()
 
 
