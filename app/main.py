@@ -1022,6 +1022,15 @@ async def admin_page(
         existing = await crud.get_active_meetup(db)
         has_meetup = existing is not None
 
+    # Preview the exact books that would be auto-promoted into a new season.
+    # Mirrors the logic in create_season: top N by Borda seed from the most
+    # recent completed season, excluding the bracket winner.
+    promotable_books = []
+    if settings.promotion_count > 0 and latest_complete:
+        promotable_books = await crud.get_promotable_books(
+            db, latest_complete.id, settings.promotion_count
+        )
+
     # God mode context — state-aware data for admin-on-behalf-of-user actions
     god_mode: dict = {}
     if active_season and active_season.state != SeasonState.complete:
@@ -1079,6 +1088,7 @@ async def admin_page(
             "latest_complete": latest_complete,
             "has_meetup": has_meetup,
             "promotion_count": settings.promotion_count,
+            "promotable_books": promotable_books,
             "nudge_cooldown_remaining": nudge_cooldown_remaining,
             "waiting_on": waiting_on,
             "current_deadline": current_deadline,
