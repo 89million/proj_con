@@ -1301,6 +1301,7 @@ async def create_season(
     submit_days: int = Form(0),
     ranking_days: int = Form(0),
     bracket_round_hours: int = Form(0),
+    participant_ids: list[int] = Form(default=[]),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_admin),
 ):
@@ -1316,8 +1317,15 @@ async def create_season(
         season.bracket_round_hours = bracket_round_hours
     await db.commit()
 
+    # Enroll the selected members. If the form sent no selection (e.g. an older
+    # client without the picker), fall back to enrolling everyone.
     all_users = await crud.get_all_users(db)
-    for u in all_users:
+    if participant_ids:
+        selected_ids = set(participant_ids)
+        participants = [u for u in all_users if u.id in selected_ids]
+    else:
+        participants = all_users
+    for u in participants:
         await crud.add_participant(db, season.id, u.id)
 
     # Auto-promote top books from the most recent completed season
@@ -1327,7 +1335,7 @@ async def create_season(
             await crud.promote_books_to_season(db, prior.id, season.id, settings.promotion_count)
 
     # Notify participants that the new season is open
-    participant_emails = [u.email for u in all_users if u.email and u.email_notifications]
+    participant_emails = [u.email for u in participants if u.email and u.email_notifications]
     deadline_note = ""
     deadline_html = ""
     if season.submit_deadline:

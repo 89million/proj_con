@@ -394,15 +394,45 @@
       </div>
       <p class="text-xs text-forest-300 mt-1">Set any to 0 to disable that deadline. Phases auto-advance when deadlines pass.</p>
     </details>
+    <details class="text-sm" open>
+      <summary class="cursor-pointer text-forest-400 hover:text-forest-600 font-medium">
+        Members ({{ all_users|length }})
+      </summary>
+      <div class="mt-2 flex items-center gap-3 mb-2">
+        <button type="button" onclick="setAllMembers(true)"
+          class="text-xs text-forest-500 hover:underline">Select all</button>
+        <button type="button" onclick="setAllMembers(false)"
+          class="text-xs text-forest-500 hover:underline">Select none</button>
+      </div>
+      <div class="flex flex-wrap gap-x-4 gap-y-1">
+        {% for u in all_users %}
+        <label class="flex items-center gap-1.5 text-forest-700">
+          <input type="checkbox" name="participant_ids" value="{{ u.id }}" checked
+            class="member-checkbox rounded border-forest-300 text-forest-600 focus:ring-forest-400" />
+          <span>{{ u.name or u.email }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      <p class="text-xs text-forest-300 mt-1">Only checked members are pulled into the season.</p>
+    </details>
     <button class="bg-forest-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-500 transition">
       Create Season
     </button>
   </form>
   {% if promotion_count > 0 %}
   <p class="text-xs text-forest-400 mt-2">
-    Top {{ promotion_count }} book{{ 's' if promotion_count != 1 else '' }} from the last completed season will be auto-promoted.
+    The top {{ promotion_count }} book{{ 's' if promotion_count != 1 else '' }} by ranking score
+    (Borda points from the ranking phase), excluding the bracket winner, will be auto-promoted from
+    the last completed season. Playoff/bracket performance doesn't affect which books carry over.
   </p>
   {% endif %}
+  <script>
+    function setAllMembers(checked) {
+      document.querySelectorAll('.member-checkbox').forEach(function (cb) {
+        cb.checked = checked;
+      });
+    }
+  </script>
 </section>
 
 <!-- Create meetup poll -->

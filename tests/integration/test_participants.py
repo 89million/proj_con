@@ -51,6 +51,28 @@ async def test_create_season_auto_enrolls_all_users(client_as_admin, test_admin,
     assert test_user.id in enrolled
 
 
+async def test_create_season_enrolls_only_selected_users(
+    client_as_admin, test_admin, test_user, db
+):
+    """Passing participant_ids enrolls only those users, excluding the rest."""
+    resp = await client_as_admin.post(
+        "/admin/season",
+        data={
+            "name": "Picked Season",
+            "page_limit": "300",
+            "participant_ids": [str(test_admin.id)],
+        },
+    )
+    assert resp.status_code == 302
+
+    result = await db.execute(select(Season).where(Season.name == "Picked Season"))
+    season = result.scalar_one()
+
+    enrolled = await _participant_ids(db, season.id)
+    assert test_admin.id in enrolled
+    assert test_user.id not in enrolled
+
+
 # ---------------------------------------------------------------------------
 # Opt-out (POST /submit/opt-out)
 # ---------------------------------------------------------------------------
