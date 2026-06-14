@@ -1,5 +1,9 @@
 """Integration tests for the book submission flow."""
 
+from unittest.mock import AsyncMock, patch
+
+from sqlalchemy import select
+
 from app.models import Book, ReadBook, Season, SeasonParticipant, SeasonState
 
 from .conftest import make_client
@@ -19,6 +23,32 @@ async def test_submit_happy_path(client_as_user, active_season):
     page = await client_as_user.get("/submit")
     assert page.status_code == 200
     assert "My Book" in page.text
+
+
+async def test_submit_stores_cover_url(client_as_user, active_season, db):
+    """A submission persists the cover URL looked up from OpenLibrary."""
+    cover = "https://covers.openlibrary.org/b/id/12345-L.jpg"
+    with patch("app.main.fetch_cover_url", new_callable=AsyncMock, return_value=cover):
+        resp = await client_as_user.post(
+            "/submit", data={"title": "Covered Book", "author": "Some Author", "page_count": 150}
+        )
+    assert resp.status_code == 302
+
+    result = await db.execute(select(Book).where(Book.title == "Covered Book"))
+    book = result.scalar_one()
+    assert book.cover_url == cover
+
+
+async def test_submit_without_cover_succeeds(client_as_user, active_season, db):
+    """A failed cover lookup (None) doesn't block submission."""
+    resp = await client_as_user.post(
+        "/submit", data={"title": "Coverless Book", "author": "Some Author", "page_count": 150}
+    )
+    assert resp.status_code == 302
+
+    result = await db.execute(select(Book).where(Book.title == "Coverless Book"))
+    book = result.scalar_one()
+    assert book.cover_url is None
 
 
 async def test_submit_duplicate_blocked(client_as_user, active_season):

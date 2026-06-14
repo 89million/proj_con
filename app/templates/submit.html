@@ -1,9 +1,10 @@
 {% extends "base.html" %}
+{% from "partials/_macros.html" import book_cover %}
 {% block title %}Submit Your Book — {{ season.name }}{% endblock %}
 {% block content %}
 
 <h1 class="text-2xl font-bold text-forest-700 mb-1">Book Submission</h1>
-<p class="text-forest-400 text-sm mb-6">Season: <strong>{{ season.name }}</strong> · Page limit: <strong>{{ season.page_limit }}</strong></p>
+<p class="text-forest-500 text-sm mb-6">Season: <strong>{{ season.name }}</strong> · Page limit: <strong>{{ season.page_limit }}</strong></p>
 
 <!-- Peer pressure widget — HTMX polled every 30s -->
 <div
@@ -23,13 +24,16 @@
 
 {% elif my_book %}
   <!-- Already submitted -->
-  <div class="mt-6 p-4 bg-forest-50 border border-forest-200 rounded-xl">
-    <p class="text-forest-600 font-semibold mb-1">You submitted:</p>
-    <p class="text-lg font-bold text-forest-800">{{ my_book.title }}</p>
-    <p class="text-forest-400 text-sm">by {{ my_book.author }} · {{ my_book.page_count }} pages</p>
-    {% if my_book.description %}
-    <p class="text-forest-500 text-sm italic mt-1">{{ my_book.description }}</p>
-    {% endif %}
+  <div class="mt-6 p-4 bg-forest-50 border border-forest-200 rounded-xl flex gap-4">
+    {{ book_cover(my_book, "w-16 h-24") }}
+    <div>
+      <p class="text-forest-600 font-semibold mb-1">You submitted:</p>
+      <p class="text-lg font-bold text-forest-800">{{ my_book.title }}</p>
+      <p class="text-forest-500 text-sm">by {{ my_book.author }} · {{ my_book.page_count }} pages</p>
+      {% if my_book.description %}
+      <p class="text-forest-500 text-sm italic mt-1">{{ my_book.description }}</p>
+      {% endif %}
+    </div>
   </div>
 
 {% else %}
@@ -72,7 +76,7 @@
     </div>
     <div>
       <label class="block text-sm font-medium text-forest-700 mb-1" for="description">
-        Description <span class="text-forest-300 font-normal">(optional)</span>
+        Description <span class="text-forest-400 font-normal">(optional)</span>
       </label>
       <div id="description-wrapper">
         <textarea id="description" name="description" rows="3" maxlength="700"
@@ -89,7 +93,7 @@
         class="mt-1 text-xs text-sound-400 hover:text-sound-500 underline">
         Suggest description ✨
       </button>
-      <span id="suggest-spinner" class="htmx-indicator text-xs text-forest-300 ml-2">Generating…</span>
+      <span id="suggest-spinner" class="htmx-indicator text-xs text-forest-400 ml-2">Generating…</span>
     </div>
     <button type="submit" class="w-full bg-forest-600 text-white py-2 rounded-lg font-semibold hover:bg-forest-500 transition">
       Submit Book
@@ -99,7 +103,7 @@
   {% if (past_picks is defined and past_picks) or (promoted_past_picks is defined and promoted_past_picks) %}
   <div class="mt-6">
     <h2 class="text-sm font-semibold text-forest-500 mb-2">Your past picks</h2>
-    <p class="text-xs text-forest-300 mb-2">Tap to fill the form above</p>
+    <p class="text-xs text-forest-400 mb-2">Tap to fill the form above</p>
     <ul class="space-y-1.5" id="past-picks-list">
       {% for book in past_picks %}
       <li class="bg-white border border-forest-100 rounded-lg px-3 py-2 shadow-sm cursor-pointer hover:border-forest-300 hover:bg-forest-50/50 transition"
@@ -108,15 +112,15 @@
           data-pages="{{ book.page_count }}"
           data-description="{{ book.description or '' }}">
         <span class="font-medium text-forest-700 text-sm">{{ book.title }}</span>
-        <span class="text-forest-400 text-xs">by {{ book.author }}</span>
-        <span class="text-forest-300 text-xs">({{ book.page_count }}pp)</span>
+        <span class="text-forest-500 text-xs">by {{ book.author }}</span>
+        <span class="text-forest-400 text-xs">({{ book.page_count }}pp)</span>
       </li>
       {% endfor %}
       {% for book in promoted_past_picks %}
       <li class="bg-forest-50 border border-forest-100 rounded-lg px-3 py-2 opacity-60 cursor-not-allowed">
         <span class="font-medium text-forest-600 text-sm">{{ book.title }}</span>
-        <span class="text-forest-400 text-xs">by {{ book.author }}</span>
-        <span class="text-forest-300 text-xs">({{ book.page_count }}pp)</span>
+        <span class="text-forest-500 text-xs">by {{ book.author }}</span>
+        <span class="text-forest-400 text-xs">({{ book.page_count }}pp)</span>
         <span class="ml-2 text-xs bg-forest-100 text-forest-500 px-1.5 py-0.5 rounded-full">Already promoted this season</span>
       </li>
       {% endfor %}
@@ -127,7 +131,7 @@
   <div class="mt-4 text-center">
     <form method="post" action="/submit/opt-out"
           onsubmit="return confirm('Skip this season? The admin can re-add you later.')">
-      <button type="submit" class="text-sm text-forest-300 hover:text-sound-400 underline">
+      <button type="submit" class="text-sm text-forest-400 hover:text-sound-400 underline">
         Skip this season
       </button>
     </form>
@@ -141,17 +145,18 @@
   <ul class="space-y-2">
     {% for book in all_submissions %}
     <li class="bg-white border border-forest-100 rounded-lg px-4 py-3 shadow-sm">
-      <div class="flex items-center gap-3">
+      <div class="flex items-start gap-3">
+        {{ book_cover(book, "w-10 h-14") }}
         <div class="flex-1">
           <span class="font-medium text-forest-800">{{ book.title }}</span>
           {% if book.promoted %}<span class="text-xs bg-sound-100 text-sound-600 px-1.5 py-0.5 rounded-full ml-1">promoted</span>{% endif %}
-          <span class="text-forest-400 text-sm"> by {{ book.author }}</span>
-          <span class="text-forest-300 text-xs ml-2">({{ book.page_count }}pp)</span>
+          <span class="text-forest-500 text-sm"> by {{ book.author }}</span>
+          <span class="text-forest-400 text-xs ml-2">({{ book.page_count }}pp)</span>
+          {% if book.description %}
+          <p class="text-forest-500 text-xs italic mt-1">{{ book.description }}</p>
+          {% endif %}
         </div>
       </div>
-      {% if book.description %}
-      <p class="text-forest-400 text-xs italic mt-1">{{ book.description }}</p>
-      {% endif %}
     </li>
     {% endfor %}
   </ul>
@@ -179,13 +184,19 @@
 
         suggestions.innerHTML = books.map(b => {
           const pages = b.page_count ? b.page_count + 'pp' : 'pages unknown';
-          return '<li class="px-3 py-2 hover:bg-forest-50 cursor-pointer text-sm border-b border-forest-50 last:border-0"'
+          const cover = b.cover_url
+            ? '<img src="' + b.cover_url + '" alt="" class="w-8 h-12 object-cover rounded flex-shrink-0 bg-forest-100" />'
+            : '<div class="w-8 h-12 rounded bg-forest-100 flex items-center justify-center text-forest-400 flex-shrink-0">📖</div>';
+          return '<li class="px-3 py-2 hover:bg-forest-50 cursor-pointer text-sm border-b border-forest-50 last:border-0 flex items-center gap-2"'
             + ' data-title="' + b.title.replace(/"/g, '&quot;') + '"'
             + ' data-author="' + b.author.replace(/"/g, '&quot;') + '"'
             + ' data-pages="' + (b.page_count || '') + '">'
+            + cover
+            + '<span>'
             + '<span class="font-medium text-forest-800">' + b.title + '</span>'
-            + ' <span class="text-forest-400">by ' + b.author + '</span>'
-            + ' <span class="text-forest-300 text-xs">(' + pages + ')</span>'
+            + ' <span class="text-forest-500">by ' + b.author + '</span>'
+            + ' <span class="text-forest-400 text-xs">(' + pages + ')</span>'
+            + '</span>'
             + '</li>';
         }).join('');
         suggestions.classList.remove('hidden');

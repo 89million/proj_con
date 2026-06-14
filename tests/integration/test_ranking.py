@@ -88,7 +88,7 @@ async def test_ranking_happy_path(client_as_user, ranking_season):
         data={f"rank_{book1.id}": "1", f"rank_{book2.id}": "2"},
     )
     assert resp.status_code == 302
-    assert resp.headers["location"] == "/ranking"
+    assert resp.headers["location"] == "/ranking?toast=ranked"
 
 
 async def test_ranking_invalid_missing_rank(client_as_user, ranking_season):

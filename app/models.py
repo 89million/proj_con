@@ -105,6 +105,7 @@ class Book(Base):
     author: Mapped[str] = mapped_column(String, nullable=False)
     page_count: Mapped[int] = mapped_column(Integer, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cover_url: Mapped[str | None] = mapped_column(String, nullable=True)
     submitter_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     season_id: Mapped[int] = mapped_column(ForeignKey("seasons.id"), nullable=False)
     promoted: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")

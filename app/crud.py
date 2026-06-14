@@ -129,6 +129,7 @@ async def promote_books_to_season(
             author=book.author,
             page_count=book.page_count,
             description=book.description,
+            cover_url=book.cover_url,
             submitter_id=book.submitter_id,
             season_id=target_season_id,
             promoted=True,
@@ -269,12 +270,14 @@ async def create_book(
     submitter_id: int,
     season_id: int,
     description: str | None = None,
+    cover_url: str | None = None,
 ) -> Book:
     book = Book(
         title=title,
         author=author,
         page_count=page_count,
         description=description,
+        cover_url=cover_url,
         submitter_id=submitter_id,
         season_id=season_id,
     )

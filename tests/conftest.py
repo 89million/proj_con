@@ -13,3 +13,10 @@ def _disable_notifications():
         patch("app.notify.send_email", new_callable=AsyncMock),
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def _disable_cover_fetch():
+    """Prevent tests from making real OpenLibrary cover lookups on submission."""
+    with patch("app.main.fetch_cover_url", new_callable=AsyncMock, return_value=None):
+        yield

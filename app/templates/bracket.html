@@ -1,9 +1,10 @@
 {% extends "base.html" %}
+{% from "partials/_macros.html" import book_cover %}
 {% block title %}Bracket — {{ season.name }}{% endblock %}
 {% block content %}
 
 <h1 class="text-2xl font-bold text-forest-700 mb-1">Tournament Bracket</h1>
-<p class="text-forest-400 text-sm mb-6">Season: <strong>{{ season.name }}</strong> · Now voting: <strong>{{ round_names.get(current_round, 'Done') }}</strong></p>
+<p class="text-forest-500 text-sm mb-6">Season: <strong>{{ season.name }}</strong> · Now voting: <strong>{{ round_names.get(current_round, 'Done') }}</strong></p>
 
 {% if is_spectator is defined and is_spectator %}
   <div class="mb-4 p-4 bg-sound-50 border border-sound-200 rounded-xl text-center">
@@ -21,9 +22,9 @@
   {% include "partials/waiting_on.html" %}
 </div>
 
-<!-- Mini bracket overview -->
-<details class="mt-4 mb-6" id="bracket-overview-toggle">
-  <summary class="cursor-pointer text-sm text-sound-400 font-medium">Show bracket overview</summary>
+<!-- Bracket overview — shown up front; collapsible for small screens -->
+<details class="mt-4 mb-6 bg-white border border-forest-100 rounded-xl p-4 shadow-sm" id="bracket-overview-toggle" open>
+  <summary class="cursor-pointer text-sm text-forest-600 font-semibold mb-2">🏟️ Bracket overview</summary>
   {% include "partials/bracket_overview.html" %}
 </details>
 
@@ -36,10 +37,10 @@
     <h2 class="text-base font-semibold text-forest-600 mb-3">
       {{ round_names.get(round_num, 'Round ' ~ round_num) }}
       {% if round_num < current_round %}
-        <span class="text-xs text-forest-300 ml-2">✓ complete</span>
+        <span class="text-xs text-forest-400 ml-2">✓ complete</span>
       {% elif round_num == current_round %}
         <span class="text-xs text-sound-400 ml-2">← voting now</span>
-        <span class="text-xs text-forest-400 ml-2">· Tap to pick your favorite</span>
+        <span class="text-xs text-forest-500 ml-2">· Tap to pick your favorite</span>
       {% else %}
         <span class="text-xs text-forest-200 ml-2">upcoming</span>
       {% endif %}
@@ -63,16 +64,17 @@
           <!-- Book A -->
           <div class="flex-1 flex items-center gap-3 book-option {% if can_vote %}cursor-pointer border border-forest-200 bg-forest-50/50 rounded-lg px-3 py-3 hover:border-forest-400 hover:bg-forest-50 transition active:bg-forest-100{% else %}px-1 py-2{% endif %}"
                {% if can_vote %}data-matchup-id="{{ matchup.id }}" data-book-id="{{ matchup.book_a_id }}"{% endif %}>
+            {{ book_cover(matchup.book_a, "w-9 h-12") }}
             <div class="flex-1">
               {% if seed_map %}
-              <span class="text-xs font-bold text-forest-400 mr-1">#{{ seed_map.get(matchup.book_a_id, '?') }}</span>
+              <span class="text-xs font-bold text-forest-500 mr-1">#{{ seed_map.get(matchup.book_a_id, '?') }}</span>
               {% endif %}
               <span class="book-title font-semibold {% if matchup.winner_id == matchup.book_a_id %}text-forest-600{% elif matchup.winner_id and matchup.winner_id != matchup.book_a_id %}text-forest-200 line-through{% else %}text-forest-800{% endif %}">
                 {{ matchup.book_a.title }}
               </span>
-              <span class="text-forest-300 text-xs"> — {{ matchup.book_a.author }}</span>
+              <span class="text-forest-400 text-xs"> — {{ matchup.book_a.author }}</span>
               {% if matchup.book_a.description %}
-              <p class="text-forest-400 text-xs italic mt-0.5">{{ matchup.book_a.description }}</p>
+              <p class="text-forest-500 text-xs italic mt-0.5">{{ matchup.book_a.description }}</p>
               {% endif %}
             </div>
             {% if user_pick == matchup.book_a_id %}
@@ -88,16 +90,17 @@
           <!-- Book B -->
           <div class="flex-1 flex items-center gap-3 book-option {% if can_vote %}cursor-pointer border border-forest-200 bg-forest-50/50 rounded-lg px-3 py-3 hover:border-forest-400 hover:bg-forest-50 transition active:bg-forest-100{% endif %} {% if not can_vote %}px-1 py-2{% endif %}"
                {% if can_vote %}data-matchup-id="{{ matchup.id }}" data-book-id="{{ matchup.book_b_id }}"{% endif %}>
+            {{ book_cover(matchup.book_b, "w-9 h-12") }}
             <div class="flex-1">
               {% if seed_map %}
-              <span class="text-xs font-bold text-forest-400 mr-1">#{{ seed_map.get(matchup.book_b_id, '?') }}</span>
+              <span class="text-xs font-bold text-forest-500 mr-1">#{{ seed_map.get(matchup.book_b_id, '?') }}</span>
               {% endif %}
               <span class="book-title font-semibold {% if matchup.winner_id == matchup.book_b_id %}text-forest-600{% elif matchup.winner_id and matchup.winner_id != matchup.book_b_id %}text-forest-200 line-through{% else %}text-forest-800{% endif %}">
                 {{ matchup.book_b.title }}
               </span>
-              <span class="text-forest-300 text-xs"> — {{ matchup.book_b.author }}</span>
+              <span class="text-forest-400 text-xs"> — {{ matchup.book_b.author }}</span>
               {% if matchup.book_b.description %}
-              <p class="text-forest-400 text-xs italic mt-0.5">{{ matchup.book_b.description }}</p>
+              <p class="text-forest-500 text-xs italic mt-0.5">{{ matchup.book_b.description }}</p>
               {% endif %}
             </div>
             {% if user_pick == matchup.book_b_id %}
@@ -112,7 +115,7 @@
           {% set a_votes = matchup.votes | selectattr('book_id', 'equalto', matchup.book_a_id) | list | length %}
           {% set b_votes = matchup.votes | selectattr('book_id', 'equalto', matchup.book_b_id) | list | length %}
           {% set mtie = matchup_tiebreakers.get(matchup.id) if matchup_tiebreakers else none %}
-          <div class="mt-3 pt-2 border-t border-forest-50 text-xs text-forest-400">
+          <div class="mt-3 pt-2 border-t border-forest-50 text-xs text-forest-500">
             Votes: {{ matchup.book_a.title }} {{ a_votes }} — {{ matchup.book_b.title }} {{ b_votes }}
             {% if matchup.winner_id %}
               · <span class="text-forest-600 font-semibold">Winner: {{ matchup.winner.title }}</span>
@@ -226,17 +229,17 @@
 
 {% if relegated_seeds %}
 <div class="mt-8 pt-6 border-t border-forest-100">
-  <h2 class="text-sm font-semibold text-forest-400 mb-1">Didn't make the bracket</h2>
-  <p class="text-xs text-forest-300 mb-3">
+  <h2 class="text-sm font-semibold text-forest-500 mb-1">Didn't make the bracket</h2>
+  <p class="text-xs text-forest-400 mb-3">
     {{ relegated_seeds | length }} book{{ 's' if relegated_seeds | length != 1 else '' }} ranked below the cutoff and were not included in the tournament.
   </p>
   <ul class="space-y-2">
     {% for s in relegated_seeds %}
     <li class="bg-forest-50 border border-forest-100 rounded-lg px-4 py-3 opacity-70">
-      <span class="text-xs font-bold text-forest-300 mr-1">#{{ s.seed }}</span>
+      <span class="text-xs font-bold text-forest-400 mr-1">#{{ s.seed }}</span>
       <span class="font-medium text-forest-500">{{ s.book.title }}</span>
-      <span class="text-forest-400 text-sm"> — {{ s.book.author }}</span>
-      <span class="text-xs text-forest-300 ml-2">({{ s.book.page_count }}pp)</span>
+      <span class="text-forest-500 text-sm"> — {{ s.book.author }}</span>
+      <span class="text-xs text-forest-400 ml-2">({{ s.book.page_count }}pp)</span>
     </li>
     {% endfor %}
   </ul>

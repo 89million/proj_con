@@ -1,7 +1,11 @@
 CONDA_ENV_NAME = proj_con_3.12
 PYTHON = python
 
-.PHONY: build-env install format fmt lint unit integration test cov ci dev
+.PHONY: build-env install format fmt lint unit integration test cov ci dev seed
+
+# Seed a demo season for manual QA. Override: make seed STAGE=bracket USERS=8
+STAGE ?= submit
+USERS ?= 6
 
 build-env:
 	conda create -n $(CONDA_ENV_NAME) python=3.12 -y
@@ -34,3 +38,6 @@ ci: install lint test
 
 dev:
 	alembic upgrade head && uvicorn app.main:app --reload
+
+seed:
+	$(PYTHON) -m scripts.seed_demo --stage $(STAGE) --users $(USERS)

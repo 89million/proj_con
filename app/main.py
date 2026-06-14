@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app import crud, notify, state, voting
+from app import crud, notify, seed_data, state, voting
 from app.auth import (
     build_authorization_url,
     create_session_token,
@@ -118,6 +118,39 @@ async def is_login_allowed(db: AsyncSession, email: str) -> bool:
 def build_round_names(max_round: int) -> dict[int, str]:
     """Map round numbers to display names based on total rounds in the bracket."""
     return {max_round - i: label for i, label in enumerate(_ROUND_LABELS) if max_round - i >= 1}
+
+
+def _build_champion_run(matchups: list, winner_id: int) -> list[dict]:
+    """The champion's path to victory: each real (non-bye) matchup it won, in order,
+    with the opponent it beat and the vote split. Used for the winner reveal."""
+    if not matchups:
+        return []
+    max_round = max(m.round for m in matchups)
+    round_names = build_round_names(max_round)
+    run = []
+    for rnd in range(1, max_round + 1):
+        m = next(
+            (
+                mm
+                for mm in matchups
+                if mm.round == rnd
+                and mm.book_a_id != mm.book_b_id
+                and winner_id in (mm.book_a_id, mm.book_b_id)
+            ),
+            None,
+        )
+        if not m:
+            continue
+        opponent = m.book_b if m.book_a_id == winner_id else m.book_a
+        run.append(
+            {
+                "round_name": round_names.get(rnd, f"Round {rnd}"),
+                "opponent": opponent,
+                "champ_votes": sum(1 for v in m.votes if v.book_id == winner_id),
+                "opp_votes": sum(1 for v in m.votes if v.book_id == opponent.id),
+            }
+        )
+    return run
 
 
 def matchup_tiebreaker(
@@ -333,6 +366,7 @@ async def submit_page(
             "is_spectator": is_spectator,
             "phase_deadline": deadline,
             "phase_name": "Submissions",
+            "stepper_phase": "submit",
             "promoted_past_picks": promoted_past_picks,
         },
     )
@@ -389,6 +423,7 @@ async def submit_book(
                 "waiting_on": waiting_on,
                 "all_submissions": all_submissions,
                 "errors": errors,
+                "stepper_phase": "submit",
                 "form": {
                     "title": title,
                     "author": author,
@@ -398,12 +433,20 @@ async def submit_book(
             },
         )
 
+    cover_url = await fetch_cover_url(title, author)
     await crud.create_book(
-        db, title, author, page_count, user.id, season.id, description=description or None
+        db,
+        title,
+        author,
+        page_count,
+        user.id,
+        season.id,
+        description=description or None,
+        cover_url=cover_url,
     )
     await state.maybe_advance_from_submit(db, season)
 
-    return RedirectResponse("/submit", status_code=302)
+    return RedirectResponse("/submit?toast=submitted", status_code=302)
 
 
 @app.post("/submit/opt-out", response_class=HTMLResponse)
@@ -422,7 +465,7 @@ async def opt_out_of_season(
 
     await crud.remove_participant(db, season.id, user.id)
     await state.maybe_advance_from_submit(db, season)
-    return RedirectResponse("/", status_code=302)
+    return RedirectResponse("/?toast=opted_out", status_code=302)
 
 
 # ---------------------------------------------------------------------------
@@ -466,6 +509,7 @@ async def ranking_page(
             "is_spectator": is_spectator,
             "phase_deadline": deadline,
             "phase_name": "Ranking",
+            "stepper_phase": "ranking",
         },
     )
 
@@ -512,7 +556,7 @@ async def submit_ranking(
     await crud.save_borda_votes(db, user.id, season.id, ordered_ids)
     await state.maybe_advance_from_ranking(db, season)
 
-    return RedirectResponse("/ranking", status_code=302)
+    return RedirectResponse("/ranking?toast=ranked", status_code=302)
 
 
 # ---------------------------------------------------------------------------
@@ -584,6 +628,7 @@ async def bracket_page(
             "is_spectator": is_spectator,
             "phase_deadline": deadline,
             "phase_name": "Bracket voting",
+            "stepper_phase": "bracket",
             "relegated_seeds": relegated_seeds,
         },
     )
@@ -665,7 +710,7 @@ async def bracket_vote_all(
         await crud.save_bracket_vote(db, user.id, matchup_id, book_id)
 
     await state.maybe_advance_bracket_round(db, season)
-    return RedirectResponse("/bracket", status_code=302)
+    return RedirectResponse("/bracket?toast=voted", status_code=302)
 
 
 # ---------------------------------------------------------------------------
@@ -683,11 +728,17 @@ async def complete_page(
     winner_book = None
     has_meetup = False
     meetup_finalized = False
+    champion_run = []
     if season:
         winner_book = await crud.get_winner_book_for_season(db, season.id)
         meetup = await crud.get_active_meetup(db)
         has_meetup = meetup is not None
         meetup_finalized = meetup is not None and meetup.finalized_option_id is not None
+
+        if winner_book:
+            champion_run = _build_champion_run(
+                await crud.get_matchups_for_season(db, season.id), winner_book.id
+            )
 
     return templates.TemplateResponse(
         "complete.html",
@@ -698,6 +749,8 @@ async def complete_page(
             "winner_book": winner_book,
             "has_meetup": has_meetup,
             "meetup_finalized": meetup_finalized,
+            "champion_run": champion_run,
+            "stepper_phase": "complete",
         },
     )
 
@@ -914,6 +967,32 @@ async def suggest_description(
     return HTMLResponse(f'<textarea {attrs} class="{css}">{text}</textarea>')
 
 
+def _cover_url_from_id(cover_i: int | None) -> str | None:
+    """Build an OpenLibrary cover image URL from a cover id."""
+    if not cover_i:
+        return None
+    return f"https://covers.openlibrary.org/b/id/{cover_i}-L.jpg"
+
+
+async def fetch_cover_url(title: str, author: str) -> str | None:
+    """Look up a book cover on OpenLibrary by title (+author). Best-effort: returns
+    None on any failure so a missing cover never blocks a submission."""
+    title = title.strip()
+    if not title:
+        return None
+    params = {"title": title, "lang": "eng", "limit": 1, "fields": "cover_i"}
+    if author.strip():
+        params["author"] = author.strip()
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get("https://openlibrary.org/search.json", params=params)
+            resp.raise_for_status()
+            docs = resp.json().get("docs", [])
+    except Exception:
+        return None
+    return _cover_url_from_id(docs[0].get("cover_i")) if docs else None
+
+
 @app.get("/api/book-search")
 async def book_search(
     q: str = "",
@@ -932,7 +1011,7 @@ async def book_search(
                     "title": q,
                     "lang": "eng",
                     "limit": 5,
-                    "fields": "title,author_name,number_of_pages_median",
+                    "fields": "title,author_name,number_of_pages_median,cover_i",
                 },
             )
             resp.raise_for_status()
@@ -950,6 +1029,7 @@ async def book_search(
                 "title": title,
                 "author": authors[0] if authors else "",
                 "page_count": pages,
+                "cover_url": _cover_url_from_id(doc.get("cover_i")),
             }
         )
     return results
@@ -1089,6 +1169,7 @@ async def admin_page(
             "has_meetup": has_meetup,
             "promotion_count": settings.promotion_count,
             "promotable_books": promotable_books,
+            "dev_tools_enabled": settings.dev_tools_enabled,
             "nudge_cooldown_remaining": nudge_cooldown_remaining,
             "waiting_on": waiting_on,
             "current_deadline": current_deadline,
@@ -1160,8 +1241,16 @@ async def god_mode_submit(
     if blocked:
         return RedirectResponse("/admin", status_code=302)
 
+    cover_url = await fetch_cover_url(title, author)
     await crud.create_book(
-        db, title, author, page_count, user_id, season.id, description=description or None
+        db,
+        title,
+        author,
+        page_count,
+        user_id,
+        season.id,
+        description=description or None,
+        cover_url=cover_url,
     )
     await state.maybe_advance_from_submit(db, season)
     return RedirectResponse("/admin", status_code=302)
@@ -1267,6 +1356,84 @@ async def god_mode_auto_vote(
     return RedirectResponse("/admin", status_code=302)
 
 
+@app.post("/admin/god-mode/auto-submit", response_class=HTMLResponse)
+async def god_mode_auto_submit(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Dev tool: submit a random sample book for every enrolled user who hasn't yet."""
+    if not settings.dev_tools_enabled:
+        return RedirectResponse("/admin", status_code=302)
+
+    season = await crud.get_active_season(db)
+    if season is None or season.state != SeasonState.submit:
+        return RedirectResponse("/admin", status_code=302)
+
+    participants = await crud.get_participants_for_season(db, season.id)
+    existing_books = await crud.get_books_for_season(db, season.id)
+    taken_titles = {b.title for b in existing_books}
+
+    # Draw from books that fit the page limit (the whole shuffled pool), so a
+    # user is never silently skipped just because one random pick was too long.
+    pool = seed_data.pick_books(
+        len(seed_data.SAMPLE_BOOKS), exclude_titles=taken_titles, max_pages=season.page_limit
+    )
+    pool_iter = iter(pool)
+
+    for user in participants:
+        if await crud.get_book_submitted_by_user(db, user.id, season.id):
+            continue
+        # Advance through the pool until we find a non-blocked title for this user.
+        for title, author, page_count in pool_iter:
+            if title in taken_titles:
+                continue
+            blocked, _ = await crud.is_book_blocked(db, title, author, season.id)
+            if blocked:
+                taken_titles.add(title)
+                continue
+            cover_url = await fetch_cover_url(title, author)
+            await crud.create_book(
+                db, title, author, page_count, user.id, season.id, cover_url=cover_url
+            )
+            taken_titles.add(title)
+            break
+        else:
+            break  # pool exhausted — no fitting books left for remaining users
+
+    await state.maybe_advance_from_submit(db, season)
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/god-mode/auto-rank", response_class=HTMLResponse)
+async def god_mode_auto_rank(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Dev tool: submit a random ranking for every enrolled user who hasn't yet."""
+    if not settings.dev_tools_enabled:
+        return RedirectResponse("/admin", status_code=302)
+
+    import random
+
+    season = await crud.get_active_season(db)
+    if season is None or season.state != SeasonState.ranking:
+        return RedirectResponse("/admin", status_code=302)
+
+    participants = await crud.get_participants_for_season(db, season.id)
+    books = await crud.get_books_for_season(db, season.id)
+    book_ids = [b.id for b in books]
+
+    for user in participants:
+        if await crud.get_borda_votes_for_user(db, user.id, season.id):
+            continue
+        shuffled = book_ids[:]
+        random.shuffle(shuffled)
+        await crud.save_borda_votes(db, user.id, season.id, shuffled)
+
+    await state.maybe_advance_from_ranking(db, season)
+    return RedirectResponse("/admin", status_code=302)
+
+
 @app.post("/admin/god-mode/copy-submissions", response_class=HTMLResponse)
 async def god_mode_copy_submissions(
     source_season_id: int = Form(...),
@@ -1298,6 +1465,7 @@ async def god_mode_copy_submissions(
             submitter_id=book.submitter_id,
             season_id=season.id,
             description=book.description,
+            cover_url=book.cover_url,
         )
 
     await state.maybe_advance_from_submit(db, season)

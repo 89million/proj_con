@@ -1,0 +1,28 @@
+{# Season progress stepper. Expects `stepper_phase` ∈ {submit, ranking, bracket, complete}. #}
+{% set order = ['submit', 'ranking', 'bracket', 'complete'] %}
+{% set labels = {'submit': 'Submit', 'ranking': 'Rank', 'bracket': 'Bracket', 'complete': 'Winner'} %}
+{% set icons = {'submit': '📚', 'ranking': '🗳️', 'bracket': '🏟️', 'complete': '🏆'} %}
+{% set current_idx = order.index(stepper_phase) if stepper_phase in order else 0 %}
+<div class="bg-white border-b border-forest-100">
+  <ol class="max-w-3xl mx-auto px-4 py-2.5 flex items-center">
+    {% for key in order %}
+      {% set idx = loop.index0 %}
+      {% set state = 'done' if idx < current_idx else ('current' if idx == current_idx else 'todo') %}
+      <li class="flex items-center gap-1.5 whitespace-nowrap">
+        <span class="flex items-center justify-center w-6 h-6 rounded-full text-xs
+          {% if state == 'current' %}bg-forest-600 text-white ring-2 ring-forest-200
+          {% elif state == 'done' %}bg-forest-100 text-forest-600
+          {% else %}bg-forest-50 text-forest-400{% endif %}">
+          {% if state == 'done' %}✓{% else %}{{ icons[key] }}{% endif %}
+        </span>
+        <span class="text-xs font-medium
+          {% if state == 'current' %}text-forest-700
+          {% elif state == 'done' %}text-forest-500
+          {% else %}text-forest-400{% endif %}">{{ labels[key] }}</span>
+      </li>
+      {% if not loop.last %}
+      <span class="flex-1 mx-2 h-0.5 rounded {{ 'bg-forest-300' if idx < current_idx else 'bg-forest-100' }}"></span>
+      {% endif %}
+    {% endfor %}
+  </ol>
+</div>

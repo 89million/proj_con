@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     default_ranking_days: int = 5
     default_bracket_round_hours: int = 48
     nudge_cooldown_minutes: int = 15
+    dev_tools_enabled: bool = False  # gates simulation/seed tools; keep off in prod
 
     def is_email_allowed(self, email: str) -> bool:
         if not self.allowed_emails.strip():

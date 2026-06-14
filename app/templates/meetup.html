@@ -7,7 +7,7 @@
   <div class="text-center py-12">
     <div class="text-5xl mb-4">📅</div>
     <h1 class="font-serif text-3xl font-bold text-forest-700 mb-2">No meetup scheduled</h1>
-    <p class="text-forest-400">A meetup poll will be created automatically when a season completes.</p>
+    <p class="text-forest-500">A meetup poll will be created automatically when a season completes.</p>
   </div>
 
 {% elif meetup.finalized_option_id %}
@@ -17,7 +17,7 @@
     <div class="text-6xl mb-3">📅</div>
     <h1 class="font-serif text-3xl font-bold text-forest-700 mb-1">Meetup Scheduled!</h1>
     {% if winner_book %}
-      <p class="text-forest-400 text-sm mb-6">{{ winner_book.title }} by {{ winner_book.author }}</p>
+      <p class="text-forest-500 text-sm mb-6">{{ winner_book.title }} by {{ winner_book.author }}</p>
     {% endif %}
 
     <div class="inline-block bg-white border-2 border-forest-300 rounded-2xl px-10 py-8 shadow-md text-left">
@@ -46,7 +46,7 @@
           </div>
           <div class="flex items-center gap-2">
             <span class="text-forest-600 font-semibold">{{ option.votes | length }}</span>
-            <span class="text-forest-400 text-xs">vote{{ 's' if option.votes | length != 1 else '' }}</span>
+            <span class="text-forest-500 text-xs">vote{{ 's' if option.votes | length != 1 else '' }}</span>
             {% if option.id == meetup.finalized_option_id %}
               <span class="text-xs bg-forest-100 text-forest-600 px-2 py-0.5 rounded-full font-medium">Chosen</span>
             {% endif %}
@@ -161,11 +161,11 @@
                 <span class="inline-flex items-center gap-1.5 bg-forest-50 border border-forest-200 rounded-full px-3 py-1 text-xs text-forest-700">
                   {{ r.user.visible_name }}
                   {% if r.venue == 'in_person' %}
-                    <span class="text-forest-400">· in person</span>
+                    <span class="text-forest-500">· in person</span>
                   {% elif r.venue == 'remote' %}
-                    <span class="text-forest-400">· remote</span>
+                    <span class="text-forest-500">· remote</span>
                     {% if r.discord_ok %}
-                      <span class="text-forest-400">· Discord ✓</span>
+                      <span class="text-forest-500">· Discord ✓</span>
                     {% endif %}
                   {% endif %}
                 </span>
@@ -197,7 +197,7 @@
 
         {% if not_attending %}
           <div>
-            <p class="text-sm font-semibold text-forest-400 mb-1">Can't make it ({{ not_attending | length }})</p>
+            <p class="text-sm font-semibold text-forest-500 mb-1">Can't make it ({{ not_attending | length }})</p>
             <div class="flex flex-wrap gap-2">
               {% for r in not_attending %}
                 <span class="bg-gray-100 rounded-full px-3 py-1 text-xs text-gray-500">
@@ -227,10 +227,10 @@
     <span class="text-forest-600 text-sm font-medium">
       Poll closes {{ meetup.deadline.strftime('%A, %b %d at %-I:%M %p') }}
     </span>
-    <span id="countdown" data-deadline="{{ meetup.deadline.isoformat() }}" class="text-forest-400 text-xs"></span>
+    <span id="countdown" data-deadline="{{ meetup.deadline.isoformat() }}" class="text-forest-500 text-xs"></span>
   </div>
 
-  <p class="text-forest-400 text-sm mb-4">Vote for all times that work for you.</p>
+  <p class="text-forest-500 text-sm mb-4">Vote for all times that work for you.</p>
 
   <!-- Options -->
   {% if sorted_options %}
@@ -244,12 +244,12 @@
                 {{ option.event_datetime.strftime('%A, %b %d at %-I:%M %p') }}
               </p>
               <p class="text-forest-600">{{ option.location }}</p>
-              <p class="text-forest-300 text-xs mt-1">Proposed by {{ option.proposer.visible_name }}</p>
+              <p class="text-forest-400 text-xs mt-1">Proposed by {{ option.proposer.visible_name }}</p>
             </div>
             <div class="flex items-center gap-3">
               <div class="text-center">
                 <span class="text-xl font-bold text-forest-700">{{ option.votes | length }}</span>
-                <p class="text-forest-400 text-xs">vote{{ 's' if option.votes | length != 1 else '' }}</p>
+                <p class="text-forest-500 text-xs">vote{{ 's' if option.votes | length != 1 else '' }}</p>
               </div>
               <form method="post" action="/meetup/vote/{{ option.id }}">
                 <button type="submit"
@@ -272,7 +272,7 @@
       {% endfor %}
     </div>
   {% else %}
-    <p class="text-forest-400 mb-6">No options proposed yet. Add one below!</p>
+    <p class="text-forest-500 mb-6">No options proposed yet. Add one below!</p>
   {% endif %}
 
 

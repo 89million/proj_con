@@ -180,6 +180,14 @@
         });
       })();
       </script>
+
+      {% if dev_tools_enabled %}
+      <form method="post" action="/admin/god-mode/auto-submit" class="mt-4 pt-4 border-t border-amber-200">
+        <button type="submit" class="w-full bg-amber-500 text-white py-2 rounded-lg font-semibold hover:bg-amber-400 transition text-sm">
+          ⚡ Dev: submit a random book for all remaining users
+        </button>
+      </form>
+      {% endif %}
     {% else %}
       <p class="text-sm text-green-600 font-medium">All participants have submitted.</p>
     {% endif %}
@@ -286,6 +294,14 @@
         updateRanks();
       })();
       </script>
+
+      {% if dev_tools_enabled %}
+      <form method="post" action="/admin/god-mode/auto-rank" class="mt-4 pt-4 border-t border-amber-200">
+        <button type="submit" class="w-full bg-amber-500 text-white py-2 rounded-lg font-semibold hover:bg-amber-400 transition text-sm">
+          ⚡ Dev: submit a random ranking for all remaining users
+        </button>
+      </form>
+      {% endif %}
     {% else %}
       <p class="text-sm text-green-600 font-medium">All participants have ranked.</p>
     {% endif %}

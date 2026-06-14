@@ -9,7 +9,7 @@
     {% if user.is_admin %}
     <a href="/admin/season/{{ season.id }}/activity" class="text-forest-500 text-sm font-medium hover:underline">Full Activity</a>
     {% endif %}
-    <a href="/history" class="text-forest-400 text-sm hover:underline">← All seasons</a>
+    <a href="/history" class="text-forest-500 text-sm hover:underline">← All seasons</a>
   </div>
 </div>
 
@@ -59,16 +59,16 @@
                     ⚖️ veteran ({{ prior_nominations.get(seed.book.id, 0) }} prior noms)
                   </span>
                 {% elif stie == 'submission_order' %}
-                  <span class="ml-2 inline-flex items-center gap-1 text-xs text-forest-400 bg-forest-50 border border-forest-200 rounded px-1.5 py-0.5"
+                  <span class="ml-2 inline-flex items-center gap-1 text-xs text-forest-500 bg-forest-50 border border-forest-200 rounded px-1.5 py-0.5"
                         title="Equal Borda points and equal prior nominations — seed decided by submission order">
                     ⚖️ submitted first
                   </span>
                 {% endif %}
                 {% if seed.book.description %}
-                <p class="text-forest-400 text-xs italic mt-0.5 font-normal">{{ seed.book.description }}</p>
+                <p class="text-forest-500 text-xs italic mt-0.5 font-normal">{{ seed.book.description }}</p>
                 {% endif %}
               </td>
-              <td class="px-4 py-2 text-forest-400">{{ seed.book.author }}</td>
+              <td class="px-4 py-2 text-forest-500">{{ seed.book.author }}</td>
               {% if borda_scores %}
                 <td class="px-4 py-2 text-right font-mono text-forest-500">{{ borda_scores.get(seed.book.id, 0) }}</td>
               {% endif %}
@@ -88,7 +88,7 @@
       {% set round_matchups = matchups | selectattr('round', 'equalto', round_num) | list %}
       {% if round_matchups %}
         <div class="mb-6">
-          <h3 class="text-sm font-semibold text-forest-400 uppercase mb-2">
+          <h3 class="text-sm font-semibold text-forest-500 uppercase mb-2">
             {{ round_names.get(round_num, 'Round ' ~ round_num) }}
           </h3>
           <div class="space-y-3">
@@ -99,7 +99,7 @@
                 {% set mtie = matchup_tiebreakers.get(matchup.id) if matchup_tiebreakers else none %}
                 <div class="bg-white border border-forest-100 rounded-xl p-4 shadow-sm text-sm">
                   <div class="flex items-center gap-2 mb-1">
-                    <span class="{% if matchup.winner_id == matchup.book_a_id %}font-bold text-forest-700{% else %}text-forest-300 line-through{% endif %}">
+                    <span class="{% if matchup.winner_id == matchup.book_a_id %}font-bold text-forest-700{% else %}text-forest-400 line-through{% endif %}">
                       {{ matchup.book_a.title }}
                     </span>
                     <span class="text-forest-200 text-xs">— {{ matchup.book_a.author }}</span>
@@ -108,7 +108,7 @@
                     {% endif %}
                   </div>
                   {% if votes_a or votes_b %}
-                    <div class="text-center text-forest-400 text-xs font-mono my-1">{{ votes_a }} – {{ votes_b }}</div>
+                    <div class="text-center text-forest-500 text-xs font-mono my-1">{{ votes_a }} – {{ votes_b }}</div>
                     {% if mtie == 'veteran' %}
                       <div class="text-center text-xs text-sound-500 mb-1">
                         ⚖️ Tie — decided by prior nominations
@@ -123,7 +123,7 @@
                     <div class="text-center text-forest-200 text-xs my-1">vs</div>
                   {% endif %}
                   <div class="flex items-center gap-2 mt-1">
-                    <span class="{% if matchup.winner_id == matchup.book_b_id %}font-bold text-forest-700{% else %}text-forest-300 line-through{% endif %}">
+                    <span class="{% if matchup.winner_id == matchup.book_b_id %}font-bold text-forest-700{% else %}text-forest-400 line-through{% endif %}">
                       {{ matchup.book_b.title }}
                     </span>
                     <span class="text-forest-200 text-xs">— {{ matchup.book_b.author }}</span>

@@ -1,0 +1,13 @@
+{# Reusable book-cover thumbnail. Falls back to a neutral placeholder when a
+   book has no cover_url. `classes` controls the size (book covers are ~2:3). #}
+{% macro book_cover(book, classes="w-10 h-14") %}
+  {% if book.cover_url %}
+  <img src="{{ book.cover_url }}" alt="Cover of {{ book.title }}" loading="lazy"
+       class="{{ classes }} object-cover rounded shadow-sm flex-shrink-0 bg-forest-100" />
+  {% else %}
+  <div class="{{ classes }} rounded shadow-sm flex-shrink-0 bg-forest-100 flex items-center justify-center text-forest-400"
+       aria-hidden="true">
+    <span class="text-lg">📖</span>
+  </div>
+  {% endif %}
+{% endmacro %}

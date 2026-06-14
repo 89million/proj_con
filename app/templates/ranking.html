@@ -1,9 +1,10 @@
 {% extends "base.html" %}
+{% from "partials/_macros.html" import book_cover %}
 {% block title %}Rank the Books — {{ season.name }}{% endblock %}
 {% block content %}
 
 <h1 class="text-2xl font-bold text-forest-700 mb-1">Rank the Books</h1>
-<p class="text-forest-400 text-sm mb-2">Season: <strong>{{ season.name }}</strong></p>
+<p class="text-forest-500 text-sm mb-2">Season: <strong>{{ season.name }}</strong></p>
 <p class="text-forest-500 text-sm mb-6">Drag to reorder. Higher-ranked picks earn more Borda points — the book with the most points across all rankings gets the top bracket seed.</p>
 
 <!-- Peer pressure widget -->
@@ -26,14 +27,17 @@
     <h2 class="text-sm font-semibold text-forest-500 mb-2">Books in the running</h2>
     <ul class="space-y-2">
       {% for book in books %}
-        <li class="bg-white border border-forest-100 rounded-lg px-4 py-3 shadow-sm">
-          <span class="font-medium text-forest-800">{{ book.title }}</span>
-          {% if book.promoted %}<span class="text-xs bg-sound-100 text-sound-600 px-1.5 py-0.5 rounded-full ml-1">promoted</span>{% endif %}
-          <span class="text-forest-400 text-sm"> — {{ book.author }}</span>
-          <span class="text-forest-300 text-xs ml-1">({{ book.page_count }}pp)</span>
-          {% if book.description %}
-          <p class="text-forest-400 text-xs italic mt-0.5">{{ book.description }}</p>
-          {% endif %}
+        <li class="bg-white border border-forest-100 rounded-lg px-4 py-3 shadow-sm flex items-start gap-3">
+          {{ book_cover(book, "w-10 h-14") }}
+          <div class="flex-1">
+            <span class="font-medium text-forest-800">{{ book.title }}</span>
+            {% if book.promoted %}<span class="text-xs bg-sound-100 text-sound-600 px-1.5 py-0.5 rounded-full ml-1">promoted</span>{% endif %}
+            <span class="text-forest-500 text-sm"> — {{ book.author }}</span>
+            <span class="text-forest-400 text-xs ml-1">({{ book.page_count }}pp)</span>
+            {% if book.description %}
+            <p class="text-forest-500 text-xs italic mt-0.5">{{ book.description }}</p>
+            {% endif %}
+          </div>
         </li>
       {% endfor %}
     </ul>
@@ -48,9 +52,9 @@
         <li class="text-forest-800">
           <span class="font-medium">{{ book.title }}</span>
           {% if book.promoted %}<span class="text-xs bg-sound-100 text-sound-600 px-1.5 py-0.5 rounded-full ml-1">promoted</span>{% endif %}
-          <span class="text-forest-400 text-sm"> — {{ book.author }}</span>
+          <span class="text-forest-500 text-sm"> — {{ book.author }}</span>
           {% if book.description %}
-          <p class="text-forest-400 text-xs italic mt-0.5 ml-4">{{ book.description }}</p>
+          <p class="text-forest-500 text-xs italic mt-0.5 ml-4">{{ book.description }}</p>
           {% endif %}
         </li>
       {% endfor %}
@@ -78,33 +82,34 @@
   </style>
 
   <form method="post" action="/ranking" id="ranking-form" class="mt-6">
-    <p class="text-xs font-semibold text-forest-400 uppercase tracking-wide mb-1">⬆ Most wanted</p>
+    <p class="text-xs font-semibold text-forest-500 uppercase tracking-wide mb-1">⬆ Most wanted</p>
     <ul id="sortable-list" class="space-y-2 mb-1">
       {% for book in books %}
       <li
         class="flex items-center gap-3 bg-white border border-forest-100 rounded-xl px-4 py-3 shadow-sm cursor-grab active:cursor-grabbing select-none transition-shadow"
         data-book-id="{{ book.id }}"
       >
-        <span class="rank-number text-forest-400 font-bold text-sm w-6 text-center">{{ loop.index }}</span>
-        <span class="text-forest-300 text-lg drag-handle">☰</span>
+        <span class="rank-number text-forest-500 font-bold text-sm w-6 text-center">{{ loop.index }}</span>
+        <span class="text-forest-400 text-lg drag-handle">☰</span>
+        {{ book_cover(book, "w-10 h-14") }}
         <div class="flex-1">
           <span class="font-medium text-forest-800">{{ book.title }}</span>
           {% if book.promoted %}<span class="text-xs bg-sound-100 text-sound-600 px-1.5 py-0.5 rounded-full ml-1">promoted</span>{% endif %}
-          <span class="text-forest-400 text-sm"> — {{ book.author }}</span>
-          <span class="text-forest-300 text-xs ml-1">({{ book.page_count }}pp)</span>
+          <span class="text-forest-500 text-sm"> — {{ book.author }}</span>
+          <span class="text-forest-400 text-xs ml-1">({{ book.page_count }}pp)</span>
           {% if book.description %}
-          <p class="text-forest-400 text-xs italic mt-0.5">{{ book.description }}</p>
+          <p class="text-forest-500 text-xs italic mt-0.5">{{ book.description }}</p>
           {% endif %}
         </div>
         <div class="flex flex-col gap-1">
-          <button type="button" class="move-up text-forest-300 hover:text-forest-600 text-xs leading-none" title="Move up">▲</button>
-          <button type="button" class="move-down text-forest-300 hover:text-forest-600 text-xs leading-none" title="Move down">▼</button>
+          <button type="button" class="move-up text-forest-400 hover:text-forest-600 text-xs leading-none" title="Move up">▲</button>
+          <button type="button" class="move-down text-forest-400 hover:text-forest-600 text-xs leading-none" title="Move down">▼</button>
         </div>
         <input type="hidden" name="rank_{{ book.id }}" class="rank-input" value="" />
       </li>
       {% endfor %}
     </ul>
-    <p class="text-xs font-semibold text-forest-400 uppercase tracking-wide mt-1 mb-4">⬇ Least wanted</p>
+    <p class="text-xs font-semibold text-forest-500 uppercase tracking-wide mt-1 mb-4">⬇ Least wanted</p>
     <button type="submit" id="submit-btn" class="w-full bg-forest-600 text-white py-2 rounded-lg font-semibold hover:bg-forest-500 transition">
       Submit My Ranking
     </button>

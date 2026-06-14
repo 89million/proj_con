@@ -188,6 +188,14 @@ async def test_submit_page_shows_season_info(client_as_user, active_season):
     assert str(active_season.page_limit) in resp.text
 
 
+async def test_submit_page_shows_progress_stepper(client_as_user, active_season):
+    """The season progress stepper renders all four phases on a flow page."""
+    resp = await client_as_user.get("/submit")
+    assert resp.status_code == 200
+    for label in ("Submit", "Rank", "Bracket", "Winner"):
+        assert label in resp.text
+
+
 async def test_submit_page_shows_user_book_after_submission(client_as_user, active_season):
     """After submitting, the user sees their own book title on the page."""
     await client_as_user.post(

@@ -7,11 +7,11 @@
 <!-- Tabs -->
 <div class="flex gap-4 border-b border-forest-200 mb-6">
   <a href="/history?tab=seasons"
-     class="pb-2 text-sm font-medium {{ 'border-b-2 border-forest-500 text-forest-700' if tab == 'seasons' else 'text-forest-400 hover:text-forest-600' }}">
+     class="pb-2 text-sm font-medium {{ 'border-b-2 border-forest-500 text-forest-700' if tab == 'seasons' else 'text-forest-500 hover:text-forest-600' }}">
     Seasons
   </a>
   <a href="/history?tab=books"
-     class="pb-2 text-sm font-medium {{ 'border-b-2 border-forest-500 text-forest-700' if tab == 'books' else 'text-forest-400 hover:text-forest-600' }}">
+     class="pb-2 text-sm font-medium {{ 'border-b-2 border-forest-500 text-forest-700' if tab == 'books' else 'text-forest-500 hover:text-forest-600' }}">
     Books We've Read
   </a>
 </div>
@@ -29,16 +29,16 @@
               {% if winner %}
                 <p class="text-forest-500 mt-0.5">&#127942; <span class="font-medium">{{ winner.title }}</span> by {{ winner.author }}</p>
               {% else %}
-                <p class="text-forest-300 text-sm mt-0.5">No winner recorded</p>
+                <p class="text-forest-400 text-sm mt-0.5">No winner recorded</p>
               {% endif %}
             </div>
-            <span class="text-forest-300 text-sm">View &rarr;</span>
+            <span class="text-forest-400 text-sm">View &rarr;</span>
           </div>
         </a>
       {% endfor %}
     </div>
   {% else %}
-    <p class="text-forest-400">No completed seasons yet.</p>
+    <p class="text-forest-500">No completed seasons yet.</p>
   {% endif %}
 
 {% elif tab == 'books' %}
@@ -87,10 +87,10 @@
               {% if rb.id in avg_ratings %}
                 <div class="flex items-center gap-0.5">
                   {% for i in range(1, 6) %}
-                    <span class="text-xs {{ 'text-forest-400' if i <= avg_ratings[rb.id] | int else 'text-forest-200' }}">&#9733;</span>
+                    <span class="text-xs {{ 'text-forest-500' if i <= avg_ratings[rb.id] | int else 'text-forest-200' }}">&#9733;</span>
                   {% endfor %}
-                  <span class="text-forest-400 text-xs ml-1">{{ avg_ratings[rb.id] }}</span>
-                  <span class="text-forest-300 text-xs">({{ review_counts.get(rb.id, 0) }})</span>
+                  <span class="text-forest-500 text-xs ml-1">{{ avg_ratings[rb.id] }}</span>
+                  <span class="text-forest-400 text-xs">({{ review_counts.get(rb.id, 0) }})</span>
                 </div>
               {% endif %}
               {% if rb.won %}
@@ -101,9 +101,9 @@
         </a>
       {% endfor %}
     </div>
-    <p class="text-forest-400 text-xs mt-4">{{ read_books | length }} book{{ 's' if read_books | length != 1 else '' }} total</p>
+    <p class="text-forest-500 text-xs mt-4">{{ read_books | length }} book{{ 's' if read_books | length != 1 else '' }} total</p>
   {% else %}
-    <p class="text-forest-400">No books recorded yet. Be the first to add one!</p>
+    <p class="text-forest-500">No books recorded yet. Be the first to add one!</p>
   {% endif %}
 
 {% endif %}
@@ -132,7 +132,7 @@
             + ' data-title="' + b.title.replace(/"/g, '&quot;') + '"'
             + ' data-author="' + b.author.replace(/"/g, '&quot;') + '">'
             + '<span class="font-medium text-forest-800">' + b.title + '</span>'
-            + ' <span class="text-forest-400">by ' + b.author + '</span>'
+            + ' <span class="text-forest-500">by ' + b.author + '</span>'
             + '</li>';
         }).join('');
         suggestions.classList.remove('hidden');
