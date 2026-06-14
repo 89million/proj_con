@@ -125,6 +125,7 @@ class ReadBook(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     title: Mapped[str] = mapped_column(String, nullable=False)
     author: Mapped[str] = mapped_column(String, nullable=False)
+    cover_url: Mapped[str | None] = mapped_column(String, nullable=True)
     won: Mapped[bool] = mapped_column(Boolean, default=False)
     pending: Mapped[bool] = mapped_column(Boolean, default=False)
     added_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)

@@ -806,7 +806,8 @@ async def suggest_read_book(
     if title and author:
         if await crud.is_read_book_duplicate(db, title, author):
             return RedirectResponse("/history?tab=books&duplicate=1", status_code=302)
-        await crud.submit_read_book(db, title, author, user.id)
+        cover_url = await fetch_cover_url(title, author)
+        await crud.submit_read_book(db, title, author, user.id, cover_url=cover_url)
     return RedirectResponse("/history?tab=books&submitted=1", status_code=302)
 
 
@@ -994,22 +995,24 @@ async def fetch_cover_url(title: str, author: str) -> str | None:
 
 
 async def backfill_book_covers(db: AsyncSession, *, sleep_seconds: float = 0.0) -> tuple[int, int]:
-    """Look up covers for every book missing one. Returns (updated, total_missing).
+    """Look up covers for every season book AND read book missing one.
+    Returns (updated, total_missing).
 
-    Idempotent: only touches books where cover_url IS NULL, and a failed lookup
-    leaves the book unchanged (it keeps the placeholder)."""
-    result = await db.execute(select(Book).where(Book.cover_url.is_(None)))
-    books = result.scalars().all()
+    Idempotent: only touches rows where cover_url IS NULL, and a failed lookup
+    leaves the row unchanged (it keeps the placeholder)."""
+    book_result = await db.execute(select(Book).where(Book.cover_url.is_(None)))
+    rb_result = await db.execute(select(ReadBook).where(ReadBook.cover_url.is_(None)))
+    rows = list(book_result.scalars().all()) + list(rb_result.scalars().all())
     updated = 0
-    for book in books:
-        url = await fetch_cover_url(book.title, book.author)
+    for row in rows:
+        url = await fetch_cover_url(row.title, row.author)
         if url:
-            book.cover_url = url
+            row.cover_url = url
             updated += 1
         if sleep_seconds:
             await asyncio.sleep(sleep_seconds)
     await db.commit()
-    return updated, len(books)
+    return updated, len(rows)
 
 
 @app.get("/api/book-search")
@@ -1586,7 +1589,8 @@ async def add_read_book(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_admin),
 ):
-    await crud.add_read_book(db, title, author, won, user.id)
+    cover_url = await fetch_cover_url(title, author)
+    await crud.add_read_book(db, title, author, won, user.id, cover_url=cover_url)
     return RedirectResponse("/admin", status_code=302)
 
 

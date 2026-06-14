@@ -222,6 +222,7 @@ async def maybe_advance_bracket_round(
         rb = ReadBook(
             title=winner_book.title,
             author=winner_book.author,
+            cover_url=winner_book.cover_url,
             won=True,
             added_by=admin.id,
         )

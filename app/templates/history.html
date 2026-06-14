@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/_macros.html" import book_cover %}
 {% block title %}History — Stumbling Book Club{% endblock %}
 {% block content %}
 
@@ -78,10 +79,13 @@
       {% for rb in read_books %}
         <a href="/history/book/{{ rb.id }}"
            class="block bg-white border border-forest-200 rounded-lg px-5 py-3 hover:shadow-md hover:border-forest-400 transition">
-          <div class="flex items-center justify-between">
-            <div>
-              <span class="font-medium text-forest-800">{{ rb.title }}</span>
-              <span class="text-forest-500 text-sm">by {{ rb.author }}</span>
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+              {{ book_cover(rb, "w-10 h-14") }}
+              <div>
+                <span class="font-medium text-forest-800">{{ rb.title }}</span>
+                <span class="text-forest-500 text-sm">by {{ rb.author }}</span>
+              </div>
             </div>
             <div class="flex items-center gap-2">
               {% if rb.id in avg_ratings %}

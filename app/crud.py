@@ -361,9 +361,14 @@ async def is_read_book_duplicate(db: AsyncSession, title: str, author: str) -> b
 
 
 async def add_read_book(
-    db: AsyncSession, title: str, author: str, won: bool, added_by: int
+    db: AsyncSession,
+    title: str,
+    author: str,
+    won: bool,
+    added_by: int,
+    cover_url: str | None = None,
 ) -> ReadBook:
-    rb = ReadBook(title=title, author=author, won=won, added_by=added_by)
+    rb = ReadBook(title=title, author=author, won=won, added_by=added_by, cover_url=cover_url)
     db.add(rb)
     await db.commit()
     await db.refresh(rb)
@@ -397,8 +402,12 @@ async def get_pending_read_books(db: AsyncSession) -> list[ReadBook]:
     return list(result.scalars().all())
 
 
-async def submit_read_book(db: AsyncSession, title: str, author: str, added_by: int) -> ReadBook:
-    rb = ReadBook(title=title, author=author, won=False, pending=True, added_by=added_by)
+async def submit_read_book(
+    db: AsyncSession, title: str, author: str, added_by: int, cover_url: str | None = None
+) -> ReadBook:
+    rb = ReadBook(
+        title=title, author=author, won=False, pending=True, added_by=added_by, cover_url=cover_url
+    )
     db.add(rb)
     await db.commit()
     await db.refresh(rb)
