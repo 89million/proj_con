@@ -657,4 +657,18 @@
 </section>
 {% endif %}
 
+<!-- Maintenance -->
+<section class="mt-8 bg-white border border-forest-100 rounded-xl p-5 shadow-sm">
+  <h2 class="font-semibold text-forest-600 mb-2">Maintenance</h2>
+  <p class="text-sm text-forest-500 mb-3">
+    Look up and fill in cover images for any books missing one (older or promoted books
+    submitted before covers existed). Safe to run repeatedly.
+  </p>
+  <form method="post" action="/admin/backfill-covers">
+    <button class="bg-forest-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-forest-500 transition">
+      🎨 Backfill missing book covers
+    </button>
+  </form>
+</section>
+
 {% endblock %}

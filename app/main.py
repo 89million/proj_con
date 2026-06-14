@@ -26,7 +26,7 @@ from app.auth import (
 )
 from app.config import settings
 from app.database import AsyncSessionLocal, get_db
-from app.models import IdeaStatus, Meetup, MeetupRsvp, ReadBook, SeasonState, User
+from app.models import Book, IdeaStatus, Meetup, MeetupRsvp, ReadBook, SeasonState, User
 
 
 async def _background_checker() -> None:
@@ -993,6 +993,25 @@ async def fetch_cover_url(title: str, author: str) -> str | None:
     return _cover_url_from_id(docs[0].get("cover_i")) if docs else None
 
 
+async def backfill_book_covers(db: AsyncSession, *, sleep_seconds: float = 0.0) -> tuple[int, int]:
+    """Look up covers for every book missing one. Returns (updated, total_missing).
+
+    Idempotent: only touches books where cover_url IS NULL, and a failed lookup
+    leaves the book unchanged (it keeps the placeholder)."""
+    result = await db.execute(select(Book).where(Book.cover_url.is_(None)))
+    books = result.scalars().all()
+    updated = 0
+    for book in books:
+        url = await fetch_cover_url(book.title, book.author)
+        if url:
+            book.cover_url = url
+            updated += 1
+        if sleep_seconds:
+            await asyncio.sleep(sleep_seconds)
+    await db.commit()
+    return updated, len(books)
+
+
 @app.get("/api/book-search")
 async def book_search(
     q: str = "",
@@ -1672,6 +1691,16 @@ async def force_advance_season(
         await crud.set_season_state(db, season, SeasonState.complete)
 
     return RedirectResponse("/admin", status_code=302)
+
+
+@app.post("/admin/backfill-covers", response_class=HTMLResponse)
+async def admin_backfill_covers(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    """Fill in covers for any books missing one (pre-existing or promoted books)."""
+    await backfill_book_covers(db)
+    return RedirectResponse("/admin?toast=covers_filled", status_code=302)
 
 
 @app.post("/admin/season/{season_id}/nudge", response_class=HTMLResponse)
