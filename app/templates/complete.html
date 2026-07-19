@@ -25,9 +25,12 @@
   @media (prefers-reduced-motion: reduce) {
     .reveal, .reveal-trophy { opacity: 1; animation: none; }
   }
+  /* Returning from a meetup vote/RSVP (#meetup anchor): skip the celebration replay. */
+  .no-anim .reveal, .no-anim .reveal-trophy { opacity: 1; animation: none; }
 </style>
+<script>if (window.location.hash) document.documentElement.classList.add('no-anim');</script>
 
-<div class="text-center py-12">
+<div class="text-center pt-12 pb-6">
   <div class="text-7xl mb-4 reveal-trophy">🏆</div>
   <h1 class="font-serif text-4xl font-bold text-forest-700 mb-1 reveal" style="animation-delay:0.15s">We have a winner!</h1>
   {% if season %}
@@ -71,20 +74,32 @@
       </ol>
     </div>
   {% endif %}
+</div>
 
-  <div class="mt-10 flex flex-col items-center gap-3 reveal" style="animation-delay:0.9s">
-    {% if has_meetup %}
-      <a href="/meetup" class="bg-forest-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-forest-500 transition text-lg">
-        {% if meetup_finalized %}RSVP for meetup →{% else %}Vote on meetup time →{% endif %}
-      </a>
-    {% endif %}
-    {% if user and user.is_admin %}
-      <a href="/admin" class="bg-forest-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-forest-500 transition text-lg">
-        Start Next Season →
-      </a>
-    {% endif %}
-    <a href="/history" class="text-forest-500 text-sm hover:underline">View past seasons</a>
-  </div>
+{% if meetup %}
+  <!-- Meetup poll / RSVP, inline so nobody has to click over to a second page -->
+  <section id="meetup" class="border-t border-forest-200 pt-8 mt-4 text-left reveal" style="animation-delay:0.9s">
+    {% set embedded = true %}
+    {% set meetup_return = '/complete' %}
+    {% include "partials/_meetup_section.html" %}
+  </section>
+{% endif %}
+
+{% if winner_book %}
+  <!-- Reading progress check-in for the winning book -->
+  <section id="progress" class="border-t border-forest-200 pt-8 mt-10 text-left reveal"
+           style="animation-delay:{{ 0.9 + (0.1 if meetup else 0) }}s">
+    {% include "partials/_reading_progress.html" %}
+  </section>
+{% endif %}
+
+<div class="mt-12 mb-6 flex flex-col items-center gap-3 reveal" style="animation-delay:{{ 0.9 + (0.1 if meetup else 0) + (0.1 if winner_book else 0) }}s">
+  {% if user and user.admin_view %}
+    <a href="/admin" class="bg-forest-600 text-white px-8 py-3 rounded-lg font-semibold hover:bg-forest-500 transition text-lg">
+      Start Next Season →
+    </a>
+  {% endif %}
+  <a href="/history" class="text-forest-500 text-sm hover:underline">View past seasons</a>
 </div>
 
 {% if winner_book %}
@@ -92,7 +107,8 @@
 <script>
 (function() {
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduceMotion || typeof confetti !== 'function') return;
+  // No confetti replay when bouncing back from a meetup vote/RSVP.
+  if (reduceMotion || window.location.hash || typeof confetti !== 'function') return;
 
   // Forest + sound brand colors
   const colors = ['#337a2b', '#75bc6a', '#c42e5d', '#ea87a4', '#d9f0d4'];

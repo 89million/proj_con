@@ -72,8 +72,13 @@
         <a href="/meetup" class="hover:underline opacity-60 text-xs">Meetup</a>
         <a href="/how-it-works" class="hover:underline opacity-60 text-xs">How It Works</a>
         <a href="/settings" class="hover:underline opacity-60 text-xs">Settings</a>
-        {% if user.is_admin %}
+        {% if user.admin_view %}
           <a href="/admin" class="bg-forest-500 hover:bg-forest-400 px-3 py-1 rounded text-xs font-semibold transition">Admin</a>
+          <form method="post" action="/toggle-member-view" class="inline">
+            <input type="hidden" name="return_to" value="{{ request.url.path }}" />
+            <button type="submit" title="Preview the site the way regular members see it"
+                    class="hover:underline opacity-60 text-xs">Member view</button>
+          </form>
         {% endif %}
         <a href="/auth/logout" class="hover:underline opacity-60 text-xs">Sign out</a>
       </div>
@@ -104,13 +109,28 @@
       <a href="/meetup" class="hover:underline opacity-80">Meetup</a>
       <a href="/how-it-works" class="hover:underline opacity-80">How It Works</a>
       <a href="/settings" class="hover:underline opacity-80">Settings</a>
-      {% if user.is_admin %}
+      {% if user.admin_view %}
         <a href="/admin" class="hover:underline opacity-80">Admin</a>
+        <form method="post" action="/toggle-member-view">
+          <input type="hidden" name="return_to" value="{{ request.url.path }}" />
+          <button type="submit" class="hover:underline opacity-80">Member view</button>
+        </form>
       {% endif %}
       <a href="/auth/logout" class="hover:underline opacity-80">Sign out</a>
     </div>
     {% endif %}
   </nav>
+
+  {% if user and user.is_admin and not user.admin_view %}
+  <!-- Member-view reminder: only real admins ever see this -->
+  <div class="bg-sound-50 border-b border-sound-200 text-center text-sm py-1.5 text-sound-700">
+    You're seeing the site as a regular member.
+    <form method="post" action="/toggle-member-view" class="inline">
+      <input type="hidden" name="return_to" value="{{ request.url.path }}" />
+      <button type="submit" class="font-semibold underline hover:no-underline">Switch back to admin view</button>
+    </form>
+  </div>
+  {% endif %}
 
   {% block banner %}
   {% if stepper_phase is defined %}

@@ -463,10 +463,10 @@ async def test_reactive_finalization_on_page_load(
     assert "Monk" in resp.text  # opt1 (Monk) had more votes
 
 
-async def test_finalized_meetup_shows_all_results(
+async def test_finalized_meetup_hides_option_tallies(
     engine, db, test_user, complete_season_with_meetup
 ):
-    """Finalized view shows all options with vote counts."""
+    """Finalized view shows only the chosen option — no leftover poll results."""
     _, meetup, opt1, _ = complete_season_with_meetup
     meetup.finalized_option_id = opt1.id
     await db.commit()
@@ -474,31 +474,85 @@ async def test_finalized_meetup_shows_all_results(
     async with make_client(engine, test_user) as client:
         resp = await client.get("/meetup")
     assert "Meetup Scheduled!" in resp.text
-    assert "All Options" in resp.text
     assert "Monk" in resp.text
-    assert "Mixed session" in resp.text
+    assert "All Options" not in resp.text
+    assert "Mixed session" not in resp.text
 
 
 # ---------------------------------------------------------------------------
-# Complete page CTA
+# Complete page — meetup section rendered inline
 # ---------------------------------------------------------------------------
 
 
-async def test_complete_page_shows_meetup_cta(engine, test_user, complete_season_with_meetup):
-    """The /complete page shows a 'Vote on meetup time' button when meetup is open."""
+async def test_complete_page_shows_meetup_poll_inline(
+    engine, test_user, complete_season_with_meetup
+):
+    """The /complete page embeds the meetup poll so members can vote in place."""
     async with make_client(engine, test_user) as client:
         resp = await client.get("/complete")
     assert resp.status_code == 200
-    assert "Vote on meetup time" in resp.text
+    assert "Vote for all times that work" in resp.text
+    assert "Monk" in resp.text
+    assert 'action="/meetup/vote/' in resp.text
 
 
-async def test_complete_page_shows_rsvp_cta_when_finalized(engine, test_user, finalized_meetup):
-    """The /complete page shows 'RSVP for meetup' once voting is closed."""
+async def test_complete_page_shows_rsvp_inline_when_finalized(engine, test_user, finalized_meetup):
+    """The /complete page embeds the RSVP form once the meetup is finalized."""
     async with make_client(engine, test_user) as client:
         resp = await client.get("/complete")
     assert resp.status_code == 200
-    assert "RSVP for meetup" in resp.text
-    assert "Vote on meetup time" not in resp.text
+    assert "Are you coming?" in resp.text
+    assert 'action="/meetup/rsvp"' in resp.text
+    assert "Vote for all times that work" not in resp.text
+
+
+async def test_complete_page_forms_return_to_complete(
+    engine, test_user, complete_season_with_meetup
+):
+    """Forms embedded on /complete carry return_to=/complete so posts bounce back."""
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/complete")
+    assert 'name="return_to" value="/complete"' in resp.text
+
+
+async def test_meetup_page_forms_return_to_meetup(engine, test_user, complete_season_with_meetup):
+    """Forms on the standalone /meetup page keep redirecting back to /meetup."""
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/meetup")
+    assert 'name="return_to" value="/meetup"' in resp.text
+
+
+async def test_vote_redirects_back_to_complete(engine, test_user, complete_season_with_meetup):
+    """Voting from the embedded section returns to /complete anchored at the section."""
+    _, _, opt1, _ = complete_season_with_meetup
+    async with make_client(engine, test_user) as client:
+        resp = await client.post(f"/meetup/vote/{opt1.id}", data={"return_to": "/complete"})
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/complete#meetup"
+
+
+async def test_rsvp_redirects_back_to_complete(engine, test_user, finalized_meetup):
+    """RSVPing from the embedded section returns to /complete anchored at the section."""
+    async with make_client(engine, test_user) as client:
+        resp = await client.post(
+            "/meetup/rsvp",
+            data={"status": "attending", "venue": "in_person", "return_to": "/complete"},
+        )
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/complete#meetup"
+
+
+async def test_tampered_return_to_falls_back_to_meetup(
+    engine, test_user, complete_season_with_meetup
+):
+    """A return_to outside the allowlist must not become an open redirect."""
+    _, _, opt1, _ = complete_season_with_meetup
+    async with make_client(engine, test_user) as client:
+        resp = await client.post(
+            f"/meetup/vote/{opt1.id}", data={"return_to": "https://evil.example/"}
+        )
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/meetup"
 
 
 # ---------------------------------------------------------------------------
@@ -597,6 +651,32 @@ async def test_rsvp_rejected_on_unfinalized_meetup(engine, test_user, complete_s
     async with make_client(engine, test_user) as client:
         resp = await client.post("/meetup/rsvp", data={"status": "attending", "venue": "in_person"})
     assert resp.status_code == 302
+
+
+async def test_rsvp_prompt_is_loud_before_answering(engine, test_user, finalized_meetup):
+    """Before RSVPing, the page shows the attention-grabbing call-to-action."""
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/meetup")
+    assert resp.status_code == 200
+    assert "You haven't RSVP'd yet" in resp.text
+    assert "Submit RSVP" in resp.text
+    assert "Update RSVP" not in resp.text
+
+
+async def test_rsvp_prompt_is_discreet_after_answering(engine, db, test_user, finalized_meetup):
+    """After RSVPing, the loud prompt collapses to a one-line summary."""
+    meetup, _ = finalized_meetup
+    db.add(
+        MeetupRsvp(meetup_id=meetup.id, user_id=test_user.id, status="attending", venue="in_person")
+    )
+    await db.commit()
+
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/meetup")
+    assert resp.status_code == 200
+    assert "You haven't RSVP'd yet" not in resp.text
+    assert "You're in" in resp.text
+    assert "Update RSVP" in resp.text
 
 
 async def test_rsvp_summary_shown_on_meetup_page(

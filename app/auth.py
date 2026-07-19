@@ -134,9 +134,16 @@ async def get_or_create_user(db: AsyncSession, user_info: dict) -> User:
 # ---------------------------------------------------------------------------
 
 
+# Cookie that flips an admin's UI into plain member view (see User.admin_view).
+MEMBER_VIEW_COOKIE = "member_view"
+
+
 async def get_current_user(request: Request, db: AsyncSession) -> User | None:
     user_id = get_session_user_id(request)
     if user_id is None:
         return None
     result = await db.execute(select(User).where(User.id == user_id))
-    return result.scalar_one_or_none()
+    user = result.scalar_one_or_none()
+    if user is not None:
+        user.member_view = request.cookies.get(MEMBER_VIEW_COOKIE) == "1"
+    return user

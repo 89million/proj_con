@@ -1,0 +1,397 @@
+{# Shared meetup UI — included by meetup.html (standalone page) and
+   complete.html (embedded below the winner announcement).
+   Callers may set:
+     embedded      — true when rendered inside another page (compact headers)
+     meetup_return — path the POST handlers should redirect back to #}
+{% set embedded = embedded | default(false) %}
+{% set meetup_return = meetup_return | default('/meetup') %}
+
+{% if meetup.finalized_option_id %}
+
+  <!-- Finalized state -->
+  <div class="text-center {{ 'py-4' if embedded else 'py-8' }}">
+    <div class="{{ 'text-4xl' if embedded else 'text-6xl' }} mb-3">📅</div>
+    <h1 class="font-serif {{ 'text-2xl' if embedded else 'text-3xl' }} font-bold text-forest-700 mb-1">Meetup Scheduled!</h1>
+    {% if winner_book and not embedded %}
+      <p class="text-forest-500 text-sm mb-6">{{ winner_book.title }} by {{ winner_book.author }}</p>
+    {% endif %}
+
+    <div class="inline-block bg-white border-2 border-forest-300 rounded-2xl px-10 py-8 shadow-md text-left {{ 'mt-3' if embedded else '' }}">
+      <p class="text-2xl font-bold text-forest-800">
+        {{ meetup.finalized_option.event_datetime.strftime('%A, %b %d') }}
+      </p>
+      <p class="text-forest-600 text-lg">
+        {{ meetup.finalized_option.event_datetime.strftime('%-I:%M %p') }}
+      </p>
+      <p class="text-forest-500 mt-2">{{ meetup.finalized_option.location }}</p>
+    </div>
+  </div>
+
+  <!-- RSVP -->
+  {% macro rsvp_form(my_rsvp, meetup_return, form_class, button_class, button_label) %}
+    <form method="post" action="/meetup/rsvp" id="rsvp-form" class="{{ form_class }}">
+      <input type="hidden" name="return_to" value="{{ meetup_return }}" />
+      <!-- Attendance -->
+      <div class="flex flex-wrap gap-3 mb-4">
+        {% for val, label in [("attending", "Yes, I'm in"), ("maybe", "Maybe"), ("not_attending", "Can't make it")] %}
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="radio" name="status" value="{{ val }}"
+                   {{ 'checked' if my_rsvp and my_rsvp.status == val else '' }}
+                   class="accent-forest-600"
+                   onchange="updateRsvpFields()">
+            <span class="text-sm font-medium text-forest-800">{{ label }}</span>
+          </label>
+        {% endfor %}
+      </div>
+
+      <!-- Venue (shown when attending or maybe) -->
+      <div id="venue-section" class="mb-4 hidden">
+        <p class="text-sm text-forest-500 mb-2">How will you join?</p>
+        <div class="flex flex-wrap gap-3">
+          {% for val, label in [("in_person", "In person"), ("remote", "Remote")] %}
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="venue" value="{{ val }}"
+                     {{ 'checked' if my_rsvp and my_rsvp.venue == val else '' }}
+                     class="accent-forest-600"
+                     onchange="updateRsvpFields()">
+              <span class="text-sm font-medium text-forest-800">{{ label }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Discord (shown when remote) -->
+      <div id="discord-section" class="mb-4 hidden">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" name="discord_ok" value="true"
+                 {{ 'checked' if my_rsvp and my_rsvp.discord_ok else '' }}
+                 class="accent-forest-600">
+          <span class="text-sm font-medium text-forest-800">I can use Discord for audio/video</span>
+        </label>
+      </div>
+
+      <button type="submit" class="{{ button_class }}">{{ button_label }}</button>
+    </form>
+  {% endmacro %}
+
+  <div class="mt-6">
+    {% if not my_rsvp %}
+      <!-- No answer yet: loud call-to-action -->
+      <div class="bg-white border-2 border-sound-300 rounded-2xl px-6 py-6 shadow-md mb-6">
+        <h2 class="font-serif text-2xl font-bold text-forest-800 mb-1">Are you coming?</h2>
+        <p class="text-sound-600 text-sm font-semibold mb-4">You haven't RSVP'd yet — let the club know!</p>
+        {{ rsvp_form(my_rsvp, meetup_return, '',
+                     'bg-sound-600 hover:bg-sound-500 text-white font-bold px-8 py-3 rounded-lg text-base transition',
+                     'Submit RSVP') }}
+      </div>
+    {% else %}
+      <!-- Answered: one discreet line, form tucked behind "Update RSVP" -->
+      <style>#rsvp-details summary::-webkit-details-marker { display: none; }</style>
+      <details id="rsvp-details" class="mb-6">
+        <summary class="list-none cursor-pointer">
+          <div class="flex items-center justify-between gap-3 bg-white border border-forest-200 rounded-xl px-5 py-3 shadow-sm hover:border-forest-300 transition">
+            <span class="text-sm">
+              {% if my_rsvp.status == 'attending' %}
+                <span class="text-forest-600 font-semibold">✓ You're in</span>
+              {% elif my_rsvp.status == 'maybe' %}
+                <span class="text-sound-600 font-semibold">? You're a maybe</span>
+              {% else %}
+                <span class="text-forest-400 font-semibold">✕ You can't make it</span>
+              {% endif %}
+              {% if my_rsvp.status != 'not_attending' %}
+                {% if my_rsvp.venue == 'in_person' %}
+                  <span class="text-forest-500">· in person</span>
+                {% elif my_rsvp.venue == 'remote' %}
+                  <span class="text-forest-500">· remote</span>
+                  {% if my_rsvp.discord_ok %}<span class="text-forest-500">· Discord ✓</span>{% endif %}
+                {% endif %}
+              {% endif %}
+            </span>
+            <span class="text-forest-500 text-xs font-medium underline whitespace-nowrap">Update RSVP</span>
+          </div>
+        </summary>
+        {{ rsvp_form(my_rsvp, meetup_return,
+                     'bg-white border border-forest-200 rounded-xl px-6 py-5 shadow-sm mt-3',
+                     'bg-forest-600 hover:bg-forest-500 text-white font-semibold px-5 py-2 rounded-lg text-sm transition',
+                     'Save changes') }}
+      </details>
+    {% endif %}
+
+    <!-- Attendee summary -->
+    {% if rsvps %}
+      {% set attending = rsvps | selectattr('status', 'eq', 'attending') | list %}
+      {% set maybe = rsvps | selectattr('status', 'eq', 'maybe') | list %}
+      {% set not_attending = rsvps | selectattr('status', 'eq', 'not_attending') | list %}
+
+      <div class="flex flex-col gap-4">
+        {% if attending %}
+          <div>
+            <p class="text-sm font-semibold text-forest-700 mb-1">Coming ({{ attending | length }})</p>
+            <div class="flex flex-wrap gap-2">
+              {% for r in attending %}
+                <span class="inline-flex items-center gap-1.5 bg-forest-50 border border-forest-200 rounded-full px-3 py-1 text-xs text-forest-700">
+                  {{ r.user.visible_name }}
+                  {% if r.venue == 'in_person' %}
+                    <span class="text-forest-500">· in person</span>
+                  {% elif r.venue == 'remote' %}
+                    <span class="text-forest-500">· remote</span>
+                    {% if r.discord_ok %}
+                      <span class="text-forest-500">· Discord ✓</span>
+                    {% endif %}
+                  {% endif %}
+                </span>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+
+        {% if maybe %}
+          <div>
+            <p class="text-sm font-semibold text-forest-700 mb-1">Maybe ({{ maybe | length }})</p>
+            <div class="flex flex-wrap gap-2">
+              {% for r in maybe %}
+                <span class="inline-flex items-center gap-1.5 bg-sound-50 border border-sound-200 rounded-full px-3 py-1 text-xs text-sound-700">
+                  {{ r.user.visible_name }}
+                  {% if r.venue == 'in_person' %}
+                    <span class="text-sound-400">· in person</span>
+                  {% elif r.venue == 'remote' %}
+                    <span class="text-sound-400">· remote</span>
+                    {% if r.discord_ok %}
+                      <span class="text-sound-400">· Discord ✓</span>
+                    {% endif %}
+                  {% endif %}
+                </span>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+
+        {% if not_attending %}
+          <div>
+            <p class="text-sm font-semibold text-forest-500 mb-1">Can't make it ({{ not_attending | length }})</p>
+            <div class="flex flex-wrap gap-2">
+              {% for r in not_attending %}
+                <span class="bg-gray-100 rounded-full px-3 py-1 text-xs text-gray-500">
+                  {{ r.user.visible_name }}
+                </span>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Admin controls (finalized) -->
+  {% if user.admin_view %}
+    <div class="border-t border-forest-200 pt-6 mt-8">
+      <h2 class="text-lg font-semibold text-forest-700 mb-3">Admin Controls</h2>
+      <form method="post" action="/admin/meetup/option/{{ meetup.finalized_option_id }}" class="flex flex-wrap gap-3 items-end">
+        <input type="hidden" name="return_to" value="{{ meetup_return }}" />
+        <div class="flex flex-col gap-1">
+          <label class="text-xs text-forest-500 font-medium">Date</label>
+          <input type="date" name="event_date"
+                 value="{{ meetup.finalized_option.event_datetime.strftime('%Y-%m-%d') }}"
+                 required
+                 class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-xs text-forest-500 font-medium">Time</label>
+          <input type="time" name="event_time"
+                 value="{{ meetup.finalized_option.event_datetime.strftime('%H:%M') }}"
+                 required
+                 class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+        </div>
+        <div class="flex flex-col gap-1">
+          <label class="text-xs text-forest-500 font-medium">Location</label>
+          <input type="text" name="location"
+                 value="{{ meetup.finalized_option.location }}"
+                 required
+                 class="border border-forest-200 rounded-lg px-3 py-2 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+        </div>
+        <label class="flex items-center gap-2 cursor-pointer pb-2">
+          <input type="checkbox" name="is_hybrid" value="true"
+                 {{ 'checked' if meetup.finalized_option.is_hybrid else '' }}
+                 class="accent-forest-600">
+          <span class="text-sm font-medium text-forest-800">Mixed session</span>
+        </label>
+        <button type="submit"
+                class="bg-forest-200 hover:bg-forest-300 text-forest-700 font-semibold px-4 py-2 rounded-lg text-sm transition">
+          Update
+        </button>
+      </form>
+    </div>
+  {% endif %}
+
+{% else %}
+
+  <!-- Active poll -->
+  <h1 class="font-serif text-2xl font-bold text-forest-700 mb-1 {{ 'text-center' if embedded else '' }}">
+    {% if winner_book %}
+      When should we meet to discuss {{ winner_book.title }}?
+    {% else %}
+      When should we meet?
+    {% endif %}
+  </h1>
+
+  <!-- Deadline banner -->
+  <div class="bg-forest-50 border border-forest-200 rounded-lg px-4 py-2 mb-6 mt-3 flex items-center justify-between">
+    <span class="text-forest-600 text-sm font-medium">
+      Poll closes {{ meetup.deadline.strftime('%A, %b %d at %-I:%M %p') }}
+    </span>
+    <span id="countdown" data-deadline="{{ meetup.deadline.isoformat() }}" class="text-forest-500 text-xs"></span>
+  </div>
+
+  <p class="text-forest-500 text-sm mb-4">Vote for all times that work for you.</p>
+
+  <!-- Options -->
+  {% if sorted_options %}
+    <div class="flex flex-col gap-3 mb-6">
+      {% for option in sorted_options %}
+        <div class="bg-white border rounded-xl px-5 py-4 shadow-sm
+                    {{ 'border-forest-400 bg-forest-50' if option.id in voted_ids else 'border-forest-200' }}">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="font-semibold text-forest-800">
+                {{ option.event_datetime.strftime('%A, %b %d at %-I:%M %p') }}
+              </p>
+              <p class="text-forest-600">{{ option.location }}</p>
+              <p class="text-forest-400 text-xs mt-1">Proposed by {{ option.proposer.visible_name }}</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="text-center">
+                <span class="text-xl font-bold text-forest-700">{{ option.votes | length }}</span>
+                <p class="text-forest-500 text-xs">vote{{ 's' if option.votes | length != 1 else '' }}</p>
+              </div>
+              <form method="post" action="/meetup/vote/{{ option.id }}">
+                <input type="hidden" name="return_to" value="{{ meetup_return }}" />
+                <button type="submit"
+                        class="px-4 py-2 rounded-lg font-semibold text-sm transition
+                               {{ 'bg-forest-600 text-white hover:bg-forest-500' if option.id not in voted_ids else 'bg-forest-200 text-forest-700 hover:bg-forest-300' }}">
+                  {{ 'Voted' if option.id in voted_ids else 'Vote' }}
+                </button>
+              </form>
+              {% if option.proposed_by == user.id %}
+                {% set other_votes = option.votes | selectattr('user_id', 'ne', user.id) | list %}
+                {% if not other_votes %}
+                  <form method="post" action="/meetup/option/{{ option.id }}/delete">
+                    <input type="hidden" name="return_to" value="{{ meetup_return }}" />
+                    <button type="submit" class="text-sound-400 hover:text-sound-600 text-xs">Delete</button>
+                  </form>
+                {% endif %}
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-forest-500 mb-6">No options proposed yet. Add one below!</p>
+  {% endif %}
+
+
+  <!-- Add option form -->
+  <div class="bg-white border border-forest-200 rounded-xl px-6 py-5 shadow-sm mb-6">
+    <h2 class="text-lg font-semibold text-forest-700 mb-3">Propose a Time</h2>
+    <form method="post" action="/meetup/option" class="flex flex-col sm:flex-row gap-2">
+      <input type="hidden" name="return_to" value="{{ meetup_return }}" />
+      <select name="event_month" required
+              class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900">
+        <option value="" disabled selected>Month</option>
+        {% for m in range(1, 13) %}
+          <option value="{{ m }}">{{ ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][m-1] }}</option>
+        {% endfor %}
+      </select>
+      <input type="number" name="event_day" min="1" max="31" placeholder="Day" required
+             class="border border-forest-200 rounded-lg w-20 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+      <input type="time" name="event_time" value="19:00" required
+             class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+      <input type="text" name="location" placeholder="Location" required
+             class="flex-1 border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+      <button type="submit"
+              class="bg-forest-600 hover:bg-forest-500 text-white font-semibold px-4 py-2 rounded-lg text-sm transition">
+        Add
+      </button>
+    </form>
+  </div>
+
+  <!-- Admin controls -->
+  {% if user.admin_view %}
+    <div class="border-t border-forest-200 pt-6 mt-6">
+      <h2 class="text-lg font-semibold text-forest-700 mb-3">Admin Controls</h2>
+      <div class="flex flex-col sm:flex-row gap-4">
+        {% if sorted_options %}
+          <form method="post" action="/meetup/finalize" class="flex gap-2">
+            <input type="hidden" name="return_to" value="{{ meetup_return }}" />
+            <select name="option_id"
+                    class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900">
+              {% for option in sorted_options %}
+                <option value="{{ option.id }}">
+                  {{ option.event_datetime.strftime('%b %d %-I:%M %p') }} @ {{ option.location }} ({{ option.votes | length }} votes)
+                </option>
+              {% endfor %}
+            </select>
+            <button type="submit"
+                    class="bg-sound-600 hover:bg-sound-500 text-white font-semibold px-4 py-2 rounded-lg text-sm transition">
+              Finalize
+            </button>
+          </form>
+        {% endif %}
+        <form method="post" action="/meetup/deadline" class="flex gap-2">
+          <input type="hidden" name="return_to" value="{{ meetup_return }}" />
+          <input type="date" name="deadline_date" required
+                 value="{{ meetup.deadline.strftime('%Y-%m-%d') }}"
+                 class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+          <input type="time" name="deadline_time" required
+                 value="{{ meetup.deadline.strftime('%H:%M') }}"
+                 class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+          <button type="submit"
+                  class="bg-forest-200 hover:bg-forest-300 text-forest-700 font-semibold px-4 py-2 rounded-lg text-sm transition">
+            Update Deadline
+          </button>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+
+{% endif %}
+
+<script>
+var IS_HYBRID = {{ 'true' if meetup and meetup.finalized_option and meetup.finalized_option.is_hybrid else 'false' }};
+function updateRsvpFields() {
+  const status = document.querySelector('input[name="status"]:checked')?.value;
+  const venue = document.querySelector('input[name="venue"]:checked')?.value;
+  const venueSection = document.getElementById('venue-section');
+  const discordSection = document.getElementById('discord-section');
+  if (!venueSection) return;
+  const showVenue = IS_HYBRID && (status === 'attending' || status === 'maybe');
+  venueSection.classList.toggle('hidden', !showVenue);
+  discordSection.classList.toggle('hidden', !(showVenue && venue === 'remote'));
+}
+document.addEventListener('DOMContentLoaded', updateRsvpFields);
+</script>
+
+<script>
+(function() {
+  const el = document.getElementById('countdown');
+  if (!el) return;
+  const deadline = new Date(el.dataset.deadline);
+
+  function update() {
+    const now = new Date();
+    const diff = deadline - now;
+    if (diff <= 0) { el.textContent = 'Poll closed'; return; }
+    const days = Math.floor(diff / 86400000);
+    const hours = Math.floor((diff % 86400000) / 3600000);
+    const mins = Math.floor((diff % 3600000) / 60000);
+    const parts = [];
+    if (days > 0) parts.push(days + 'd');
+    if (hours > 0) parts.push(hours + 'h');
+    parts.push(mins + 'm');
+    el.textContent = parts.join(' ') + ' remaining';
+  }
+
+  update();
+  setInterval(update, 60000);
+})();
+</script>

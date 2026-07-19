@@ -247,7 +247,7 @@ async def maybe_advance_bracket_round(
             discord_msg=(
                 f"🎉 **{season.name}** is complete! "
                 f"The winner is **{winner_book.title}** by {winner_book.author}! "
-                f"Vote on when to meet: {url}/meetup"
+                f"See the results & vote on when to meet: {url}/complete"
             ),
             email_subject=f"{season.name} — We have a winner!",
             email_body=(
@@ -255,8 +255,7 @@ async def maybe_advance_bracket_round(
                 f"<p>The winner is <strong>{winner_book.title}</strong> "
                 f"by {winner_book.author}.</p>"
                 f"<p>Time to start reading!</p>"
-                f'<p><a href="{url}/complete">See the results →</a></p>'
-                f'<p><a href="{url}/meetup">Vote on meetup time →</a></p>'
+                f'<p><a href="{url}/complete">See the results & vote on meetup time →</a></p>'
             ),
         )
     else:

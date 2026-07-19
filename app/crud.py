@@ -21,6 +21,7 @@ from app.models import (
     MeetupRsvp,
     MeetupVote,
     ReadBook,
+    ReadingProgress,
     Season,
     SeasonParticipant,
     SeasonState,
@@ -1393,6 +1394,36 @@ async def upsert_rsvp(
     rsvp.updated_at = datetime.utcnow()
     await db.commit()
     return rsvp
+
+
+async def upsert_reading_progress(
+    db: AsyncSession, season_id: int, user_id: int, percent: int
+) -> ReadingProgress:
+    result = await db.execute(
+        select(ReadingProgress).where(
+            ReadingProgress.season_id == season_id,
+            ReadingProgress.user_id == user_id,
+        )
+    )
+    progress = result.scalar_one_or_none()
+    if progress is None:
+        progress = ReadingProgress(season_id=season_id, user_id=user_id)
+        db.add(progress)
+    progress.percent = percent
+    progress.updated_at = datetime.utcnow()
+    await db.commit()
+    return progress
+
+
+async def get_reading_progress_for_season(
+    db: AsyncSession, season_id: int
+) -> list[ReadingProgress]:
+    result = await db.execute(
+        select(ReadingProgress)
+        .where(ReadingProgress.season_id == season_id)
+        .options(selectinload(ReadingProgress.user))
+    )
+    return list(result.scalars().all())
 
 
 async def get_rsvps_for_meetup(db: AsyncSession, meetup_id: int) -> list[MeetupRsvp]:

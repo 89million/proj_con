@@ -18,6 +18,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from app import crud, notify, seed_data, state, voting
 from app.auth import (
+    MEMBER_VIEW_COOKIE,
     build_authorization_url,
     create_session_token,
     exchange_code_for_user_info,
@@ -726,14 +727,15 @@ async def complete_page(
 ):
     season = await crud.get_most_recent_complete_season(db)
     winner_book = None
-    has_meetup = False
-    meetup_finalized = False
     champion_run = []
+    meetup_ctx: dict = {"meetup": None}
+    progress_ctx: dict = {"reading_progress": [], "my_progress": 0}
     if season:
         winner_book = await crud.get_winner_book_for_season(db, season.id)
-        meetup = await crud.get_active_meetup(db)
-        has_meetup = meetup is not None
-        meetup_finalized = meetup is not None and meetup.finalized_option_id is not None
+        # The meetup poll / RSVP section renders inline on this page so members
+        # can vote and RSVP right where the winner is announced.
+        meetup_ctx = await _build_meetup_context(db, user)
+        progress_ctx = await _build_reading_progress_context(db, season.id, user)
 
         if winner_book:
             champion_run = _build_champion_run(
@@ -747,12 +749,50 @@ async def complete_page(
             "user": user,
             "season": season,
             "winner_book": winner_book,
-            "has_meetup": has_meetup,
-            "meetup_finalized": meetup_finalized,
             "champion_run": champion_run,
             "stepper_phase": "complete",
+            **meetup_ctx,
+            **progress_ctx,
         },
     )
+
+
+async def _build_reading_progress_context(db: AsyncSession, season_id: int, user: User) -> dict:
+    """Reading-progress entries for everyone in the season, leaderboard-sorted.
+
+    Season participants appear even before they've checked in (at 0%), so the
+    board always shows the whole club; non-participants show up once they set
+    progress themselves.
+    """
+    participants = await crud.get_participants_for_season(db, season_id)
+    progress_rows = await crud.get_reading_progress_for_season(db, season_id)
+    percent_by_user = {p.user_id: p.percent for p in progress_rows}
+
+    entries = [{"user": u, "percent": percent_by_user.get(u.id, 0)} for u in participants]
+    participant_ids = {u.id for u in participants}
+    entries.extend(
+        {"user": p.user, "percent": p.percent}
+        for p in progress_rows
+        if p.user_id not in participant_ids
+    )
+    entries.sort(key=lambda e: (-e["percent"], e["user"].visible_name.lower()))
+
+    return {
+        "reading_progress": entries,
+        "my_progress": percent_by_user.get(user.id, 0),
+    }
+
+
+@app.post("/reading-progress", response_class=HTMLResponse)
+async def update_reading_progress(
+    percent: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    season = await crud.get_most_recent_complete_season(db)
+    if season:
+        await crud.upsert_reading_progress(db, season.id, user.id, max(0, min(100, percent)))
+    return RedirectResponse("/complete#progress", status_code=302)
 
 
 @app.get("/history", response_class=HTMLResponse)
@@ -1811,12 +1851,24 @@ async def delete_book(
 # ---------------------------------------------------------------------------
 
 
-@app.get("/meetup", response_class=HTMLResponse)
-async def meetup_page(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_user),
-):
+# The meetup UI (partials/_meetup_section.html) renders on both /meetup and
+# /complete; forms carry a return_to field so posts bounce back to whichever
+# page hosted them. Only these two paths are accepted — anything else falls
+# back to /meetup so the field can't become an open redirect.
+_MEETUP_RETURN_PATHS = {"/meetup", "/complete"}
+
+
+def _meetup_redirect(return_to: str) -> RedirectResponse:
+    path = return_to if return_to in _MEETUP_RETURN_PATHS else "/meetup"
+    anchor = "#meetup" if path == "/complete" else ""
+    return RedirectResponse(f"{path}{anchor}", status_code=302)
+
+
+async def _build_meetup_context(db: AsyncSession, user: User) -> dict:
+    """Load everything the shared meetup UI needs, auto-finalizing an expired poll.
+
+    Used by both /meetup and /complete so the two pages always agree on state.
+    """
     meetup = await crud.get_active_meetup(db)
     if meetup and not meetup.finalized_option_id and datetime.utcnow() > meetup.deadline:
         winner = await crud.finalize_meetup(db, meetup)
@@ -1841,14 +1893,12 @@ async def meetup_page(
             meetup = await crud.get_active_meetup(db)
 
     voted_ids: set[int] = set()
-    winner_book = None
     rsvps: list[MeetupRsvp] = []
     my_rsvp: MeetupRsvp | None = None
     if meetup:
         voted_ids = {
             v.option_id for opt in meetup.options for v in opt.votes if v.user_id == user.id
         }
-        winner_book = await crud.get_winner_book_for_season(db, meetup.season_id)
         if meetup.finalized_option_id:
             rsvps = await crud.get_rsvps_for_meetup(db, meetup.id)
             my_rsvp = next((r for r in rsvps if r.user_id == user.id), None)
@@ -1857,17 +1907,33 @@ async def meetup_page(
     # Vote counts are shown on each card — no need to reorder by popularity.
     sorted_options = sorted(meetup.options, key=lambda o: o.created_at) if meetup else []
 
+    return {
+        "meetup": meetup,
+        "sorted_options": sorted_options,
+        "voted_ids": voted_ids,
+        "rsvps": rsvps,
+        "my_rsvp": my_rsvp,
+    }
+
+
+@app.get("/meetup", response_class=HTMLResponse)
+async def meetup_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    meetup_ctx = await _build_meetup_context(db, user)
+    winner_book = None
+    if meetup_ctx["meetup"]:
+        winner_book = await crud.get_winner_book_for_season(db, meetup_ctx["meetup"].season_id)
+
     return templates.TemplateResponse(
         "meetup.html",
         {
             "request": request,
             "user": user,
-            "meetup": meetup,
-            "sorted_options": sorted_options,
-            "voted_ids": voted_ids,
             "winner_book": winner_book,
-            "rsvps": rsvps,
-            "my_rsvp": my_rsvp,
+            **meetup_ctx,
         },
     )
 
@@ -1877,20 +1943,21 @@ async def submit_meetup_rsvp(
     status: str = Form(...),
     venue: str | None = Form(None),
     discord_ok: bool = Form(False),
+    return_to: str = Form("/meetup"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_user),
 ):
     meetup = await crud.get_active_meetup_shallow(db)
     if not meetup or not meetup.finalized_option_id:
-        return RedirectResponse("/meetup", status_code=302)
+        return _meetup_redirect(return_to)
     if status not in ("attending", "maybe", "not_attending"):
-        return RedirectResponse("/meetup", status_code=302)
+        return _meetup_redirect(return_to)
     resolved_venue = (
         venue if status in ("attending", "maybe") and venue in ("in_person", "remote") else None
     )
     resolved_discord = discord_ok if resolved_venue == "remote" else None
     await crud.upsert_rsvp(db, meetup.id, user.id, status, resolved_venue, resolved_discord)
-    return RedirectResponse("/meetup", status_code=302)
+    return _meetup_redirect(return_to)
 
 
 @app.post("/meetup/option", response_class=HTMLResponse)
@@ -1899,12 +1966,13 @@ async def add_meetup_option(
     event_day: int = Form(...),
     event_time: str = Form("19:00"),
     location: str = Form(...),
+    return_to: str = Form("/meetup"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_user),
 ):
     meetup = await crud.get_active_meetup_shallow(db)
     if not meetup or meetup.finalized_option_id or datetime.utcnow() > meetup.deadline:
-        return RedirectResponse("/meetup", status_code=302)
+        return _meetup_redirect(return_to)
     try:
         hour, minute = (int(x) for x in event_time.split(":"))
         now = datetime.utcnow()
@@ -1914,49 +1982,52 @@ async def add_meetup_option(
             year += 1
         event_dt = datetime(year, event_month, event_day, hour, minute)
     except (ValueError, TypeError):
-        return RedirectResponse("/meetup", status_code=302)
+        return _meetup_redirect(return_to)
     if event_dt < datetime.utcnow():
-        return RedirectResponse("/meetup", status_code=302)
+        return _meetup_redirect(return_to)
     await crud.create_meetup_option(db, meetup.id, user.id, event_dt, location.strip())
-    return RedirectResponse("/meetup", status_code=302)
+    return _meetup_redirect(return_to)
 
 
 @app.post("/meetup/vote/{option_id}", response_class=HTMLResponse)
 async def toggle_meetup_vote(
     option_id: int,
+    return_to: str = Form("/meetup"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_user),
 ):
     # Pure scalar check — no ORM objects loaded into the session at all,
     # so no cascade/relationship interference can occur during commit.
     if not await crud.is_meetup_option_votable(db, option_id):
-        return RedirectResponse("/meetup", status_code=302)
+        return _meetup_redirect(return_to)
     await crud.toggle_meetup_vote(db, option_id, user.id)
-    return RedirectResponse("/meetup", status_code=302)
+    return _meetup_redirect(return_to)
 
 
 @app.post("/meetup/option/{option_id}/delete", response_class=HTMLResponse)
 async def delete_meetup_option(
     option_id: int,
+    return_to: str = Form("/meetup"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_user),
 ):
     meetup = await crud.get_active_meetup_shallow(db)
     if not meetup or meetup.finalized_option_id or datetime.utcnow() > meetup.deadline:
-        return RedirectResponse("/meetup", status_code=302)
+        return _meetup_redirect(return_to)
     await crud.delete_meetup_option(db, option_id, user.id)
-    return RedirectResponse("/meetup", status_code=302)
+    return _meetup_redirect(return_to)
 
 
 @app.post("/meetup/finalize", response_class=HTMLResponse)
 async def finalize_meetup(
     option_id: int = Form(...),
+    return_to: str = Form("/meetup"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_admin),
 ):
     meetup = await crud.get_active_meetup_shallow(db)
     if not meetup or meetup.finalized_option_id:
-        return RedirectResponse("/meetup", status_code=302)
+        return _meetup_redirect(return_to)
     await crud.admin_finalize_meetup(db, meetup, option_id)
     # Reload to get the finalized option details
     meetup = await crud.get_active_meetup(db)
@@ -1978,27 +2049,28 @@ async def finalize_meetup(
                 f"at {opt.location}</p>"
             ),
         )
-    return RedirectResponse("/meetup", status_code=302)
+    return _meetup_redirect(return_to)
 
 
 @app.post("/meetup/deadline", response_class=HTMLResponse)
 async def update_meetup_deadline(
     deadline_date: str = Form(...),
     deadline_time: str = Form("23:59"),
+    return_to: str = Form("/meetup"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_admin),
 ):
     meetup = await crud.get_active_meetup_shallow(db)
     if not meetup or meetup.finalized_option_id:
-        return RedirectResponse("/meetup", status_code=302)
+        return _meetup_redirect(return_to)
     try:
         hour, minute = (int(x) for x in deadline_time.split(":"))
         year, month, day = (int(x) for x in deadline_date.split("-"))
         new_deadline = datetime(year, month, day, hour, minute)
     except (ValueError, TypeError):
-        return RedirectResponse("/meetup", status_code=302)
+        return _meetup_redirect(return_to)
     await crud.update_meetup_deadline(db, meetup, new_deadline)
-    return RedirectResponse("/meetup", status_code=302)
+    return _meetup_redirect(return_to)
 
 
 @app.post("/admin/meetup/option/{option_id}", response_class=HTMLResponse)
@@ -2008,12 +2080,13 @@ async def admin_update_option(
     is_hybrid: bool = Form(False),
     event_date: str = Form(""),
     event_time: str = Form(""),
+    return_to: str = Form("/meetup"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_admin),
 ):
     meetup = await crud.get_active_meetup_shallow(db)
     if not meetup or meetup.finalized_option_id != option_id:
-        return RedirectResponse("/meetup", status_code=302)
+        return _meetup_redirect(return_to)
     event_datetime = None
     if event_date and event_time:
         try:
@@ -2021,7 +2094,30 @@ async def admin_update_option(
         except ValueError:
             pass
     await crud.update_option_details(db, option_id, location.strip(), is_hybrid, event_datetime)
-    return RedirectResponse("/meetup", status_code=302)
+    return _meetup_redirect(return_to)
+
+
+@app.post("/toggle-member-view", response_class=HTMLResponse)
+async def toggle_member_view(
+    request: Request,
+    return_to: str = Form("/"),
+    user: User = Depends(require_user),
+):
+    """Flip an admin's UI between full admin view and plain member view.
+
+    Purely cosmetic — templates gate admin widgets on User.admin_view, while
+    every admin route keeps enforcing the real is_admin flag.
+    """
+    path = return_to if return_to.startswith("/") and not return_to.startswith("//") else "/"
+    response = RedirectResponse(path, status_code=302)
+    if user.is_admin:
+        if request.cookies.get(MEMBER_VIEW_COOKIE) == "1":
+            response.delete_cookie(MEMBER_VIEW_COOKIE, path="/")
+        else:
+            response.set_cookie(
+                MEMBER_VIEW_COOKIE, "1", path="/", httponly=True, max_age=60 * 60 * 24 * 30
+            )
+    return response
 
 
 @app.get("/settings", response_class=HTMLResponse)

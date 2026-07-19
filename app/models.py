@@ -49,6 +49,16 @@ class User(Base):
     def visible_name(self) -> str:
         return self.display_name or self.name
 
+    @property
+    def admin_view(self) -> bool:
+        """True when admin-only UI should render for this user.
+
+        `member_view` is a transient per-request flag (set from a cookie in
+        get_current_user, never persisted) that lets admins preview the site
+        as a regular member. Server-side authorization always checks is_admin.
+        """
+        return self.is_admin and not getattr(self, "member_view", False)
+
     books: Mapped[list["Book"]] = relationship("Book", back_populates="submitter")
     borda_votes: Mapped[list["BordaVote"]] = relationship("BordaVote", back_populates="user")
     bracket_votes: Mapped[list["BracketVote"]] = relationship("BracketVote", back_populates="user")
@@ -365,4 +375,22 @@ class MeetupRsvp(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     meetup: Mapped["Meetup"] = relationship("Meetup")
+    user: Mapped["User"] = relationship("User")
+
+
+class ReadingProgress(Base):
+    """A member's self-reported progress through the season's winning book (0–100%)."""
+
+    __tablename__ = "reading_progress"
+    __table_args__ = (
+        UniqueConstraint("season_id", "user_id", name="uq_one_progress_per_season_user"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    season_id: Mapped[int] = mapped_column(ForeignKey("seasons.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    percent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    season: Mapped["Season"] = relationship("Season")
     user: Mapped["User"] = relationship("User")
