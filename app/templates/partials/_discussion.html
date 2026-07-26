@@ -1,0 +1,201 @@
+{# Page-anchored discussion for the season's winning book.
+
+   Bodies arrive pre-fogged from _build_discussion_context — a post the reader
+   hasn't reached contains generated words, never the real ones, so there is
+   nothing to recover from the page source.
+
+   Context: discussion (list of {post, body, fogged, replies}), my_page,
+   book_pages, fogged_count, winner_book, user. #}
+
+{% macro render_body(body, fogged) %}
+  {% if fogged %}
+    <p class="fog-body text-sm text-forest-700 leading-relaxed" aria-hidden="true"
+       style="filter: blur({{ body.blur_px }}px); opacity: {{ body.opacity }}">{{ body.plain }}</p>
+    {# Screen readers get the explanation rather than a paragraph of nonsense. #}
+    <p class="sr-only">This post is about a page you haven't reached yet, so it isn't legible.</p>
+  {% else %}
+    <p class="text-sm text-forest-700 leading-relaxed">{{ body.plain }}</p>
+  {% endif %}
+{% endmacro %}
+
+<style>
+  /* Every word in a fogged post is invented — same length, real letters, no
+     meaning — so the blur goes on the whole paragraph. Blurring only the
+     replaced words would leave sharp text between the soft parts, and the eye
+     would just read that. */
+  @media (prefers-reduced-motion: no-preference) {
+    .fog-body { transition: filter .4s ease; }
+  }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+</style>
+
+<h2 class="font-serif text-2xl font-bold text-forest-700 mb-1 text-center">
+  Discussion
+</h2>
+<p class="text-forest-500 text-sm mb-5 text-center">
+  {% if book_pages %}
+    Posts are tagged with the page they're about — you're on
+    <span class="font-mono">p.&nbsp;{{ my_page }}</span>. Anything past that is scrambled
+    until you reach it, and the further ahead it is, the harder it is to make out.
+  {% else %}
+    Say something about how the reading is going.
+  {% endif %}
+</p>
+
+{% if wall_quotes and read_book %}
+  {# A peek at the book's quote wall — the passages people are saving, which is
+     usually where the discussion starts. Full wall lives on the book page. #}
+  <div class="bg-forest-50 border border-forest-100 rounded-xl px-5 py-4 mb-6">
+    <div class="flex items-baseline justify-between mb-3">
+      <h3 class="text-xs font-semibold text-forest-500 uppercase tracking-wide">From the quote wall</h3>
+      <a href="/history/book/{{ read_book.id }}#quotes"
+         class="text-xs font-semibold text-sound-500 hover:underline">See all &rarr;</a>
+    </div>
+    <div class="grid gap-2 sm:grid-cols-3">
+      {% for entry in wall_quotes %}
+        <blockquote class="text-sm font-serif italic text-forest-800 leading-snug">
+          {% if entry.fogged %}
+            <span class="block" aria-hidden="true"
+                  style="filter: blur({{ entry.body.blur_px }}px); opacity: {{ entry.body.opacity }}">{{ entry.body.plain }}</span>
+          {% else %}
+            &ldquo;{{ entry.body.plain }}&rdquo;
+          {% endif %}
+          <span class="block not-italic font-sans text-[0.65rem] text-forest-400 mt-1">p.&nbsp;{{ entry.quote.page }}</span>
+        </blockquote>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+
+<form method="post" action="/discussion"
+      class="bg-white border border-forest-200 rounded-xl px-5 py-4 shadow-sm mb-6">
+  {# Optional passage the post opens from. It lands on the book's quote wall
+     and stays linked both ways. #}
+  <input type="text" name="quote_text" maxlength="1000"
+         placeholder="&ldquo;Quote a line to riff on… (optional)&rdquo;"
+         class="w-full border-0 p-0 mb-2 pb-2 border-b border-dashed border-forest-200 font-serif italic
+                text-sm text-forest-800 placeholder-forest-300 focus:outline-none" />
+  <textarea name="body" rows="2" required
+            placeholder="Say something about where you are — it won't be legible to anyone who hasn't got this far."
+            class="w-full border-0 p-0 text-sm text-forest-900 placeholder-forest-400 focus:outline-none resize-y"></textarea>
+  <div class="flex items-center justify-between gap-3 mt-3 pt-3 border-t border-dashed border-forest-200">
+    <label class="text-xs text-forest-500 flex items-center gap-2">
+      About page
+      <input type="number" name="anchor_page" value="{{ my_page }}" min="0" max="{{ book_pages or 9999 }}"
+             class="w-20 border border-sound-200 bg-sound-50 text-sound-600 font-mono font-semibold
+                    rounded px-2 py-0.5 text-xs focus:outline-none focus:ring-2 focus:ring-forest-400" />
+      <span class="text-forest-400">— where you are now</span>
+    </label>
+    <button type="submit"
+            class="bg-forest-600 hover:bg-forest-500 text-white font-semibold px-5 py-2 rounded-lg text-sm transition">
+      Post
+    </button>
+  </div>
+</form>
+
+{% if fogged_count %}
+  <p class="text-xs text-forest-400 mb-4 text-center">
+    {{ fogged_count }} post{{ 's' if fogged_count != 1 else '' }} still out of focus.
+  </p>
+{% endif %}
+
+{% if discussion %}
+  {% set ns = namespace(horizon_drawn=false) %}
+  <div class="flex flex-col gap-3">
+    {% for entry in discussion %}
+      {% if entry.fogged and not ns.horizon_drawn %}
+        {% set ns.horizon_drawn = true %}
+        {# Fog is purely a function of distance, so this line really is the
+           reader's own position: everything below it is anchored further on. #}
+        <div class="flex items-center gap-3 my-1">
+          <span class="bg-sound-500 text-white text-[0.65rem] font-bold uppercase tracking-wider
+                       px-3 py-1 rounded-r-full whitespace-nowrap">
+            You're here &middot; p.&nbsp;{{ my_page }}
+          </span>
+          <span class="flex-1 border-t-2 border-dashed border-sound-200"></span>
+        </div>
+      {% endif %}
+
+      <article class="bg-white border rounded-xl px-5 py-4 shadow-sm flex gap-4
+                      {{ 'border-sound-200' if entry.fogged else 'border-forest-200' }}">
+        <div class="w-12 flex-shrink-0 text-right border-r border-forest-100 pr-3">
+          <span class="block font-mono font-bold text-sm {{ 'text-sound-500' if entry.fogged else 'text-forest-700' }}">
+            {{ entry.post.anchor_page }}
+          </span>
+          <span class="block text-[0.6rem] text-forest-400 uppercase tracking-wide">page</span>
+        </div>
+
+        <div class="flex-1 min-w-0">
+          <div class="flex items-baseline gap-2 flex-wrap mb-1">
+            <span class="font-semibold text-sm {{ 'text-sound-600' if entry.post.user_id == user.id else 'text-forest-800' }}">
+              {{ 'You' if entry.post.user_id == user.id else entry.post.user.visible_name }}
+            </span>
+            {% if entry.post.user_id == user.id or user.is_admin %}
+              <form method="post" action="/discussion/{{ entry.post.id }}/delete" class="inline">
+                <button type="submit" class="text-[0.65rem] text-forest-400 hover:text-sound-500 hover:underline">
+                  delete
+                </button>
+              </form>
+            {% endif %}
+          </div>
+
+          {% if entry.quote_body %}
+            {# The passage the post opened from. Lives on the book's wall; the
+               deeper-dive link points there. #}
+            <blockquote class="mb-2 pl-3 border-l-2 border-sound-300 font-serif italic text-forest-800">
+              {% if entry.quote_body.is_fogged %}
+                <span class="block" aria-hidden="true"
+                      style="filter: blur({{ entry.quote_body.blur_px }}px); opacity: {{ entry.quote_body.opacity }}">{{ entry.quote_body.plain }}</span>
+              {% else %}
+                &ldquo;{{ entry.quote_body.plain }}&rdquo;
+              {% endif %}
+              {% if read_book %}
+                <a href="/history/book/{{ read_book.id }}#quotes"
+                   class="not-italic text-[0.65rem] font-sans font-semibold text-sound-500 hover:underline">
+                  on the quote wall &rarr;
+                </a>
+              {% endif %}
+            </blockquote>
+          {% endif %}
+
+          {{ render_body(entry.body, entry.fogged) }}
+
+          {% if entry.fogged %}
+            {# Just an aside from the reader, not an explanation of the rules —
+               the anchor page is already in the gutter for anyone who cares. #}
+            <p class="text-xs italic text-sound-500 mt-2">{{ entry.body.remark }}</p>
+          {% endif %}
+
+          {% for reply in entry.replies %}
+            <div class="mt-3 pt-3 border-t border-forest-100 border-l-2 border-l-forest-200 pl-3">
+              <span class="font-semibold text-xs {{ 'text-sound-600' if reply.post.user_id == user.id else 'text-forest-800' }}">
+                {{ 'You' if reply.post.user_id == user.id else reply.post.user.visible_name }}
+              </span>
+              {{ render_body(reply.body, reply.fogged) }}
+            </div>
+          {% endfor %}
+
+          {% if not entry.fogged %}
+            <form method="post" action="/discussion/{{ entry.post.id }}/reply"
+                  class="mt-3 flex items-center gap-2">
+              <input type="text" name="body" required placeholder="Reply…"
+                     class="flex-1 border border-forest-200 rounded-lg px-3 py-1.5 text-xs
+                            focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900" />
+              <button type="submit"
+                      class="text-xs font-semibold text-forest-600 hover:text-forest-500 px-2">
+                Reply
+              </button>
+            </form>
+          {% endif %}
+        </div>
+      </article>
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="text-center text-forest-400 text-sm border border-dashed border-forest-200 rounded-xl py-8">
+    Nothing here yet. Be the first to say something.
+  </p>
+{% endif %}

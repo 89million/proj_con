@@ -9,10 +9,12 @@ from sqlalchemy.orm import selectinload
 
 from app.models import (
     Book,
+    BookQuote,
     BookReview,
     BordaVote,
     BracketMatchup,
     BracketVote,
+    DiscussionPost,
     FeatureIdea,
     IdeaStatus,
     IdeaUpvote,
@@ -1434,3 +1436,165 @@ async def get_rsvps_for_meetup(db: AsyncSession, meetup_id: int) -> list[MeetupR
         .order_by(MeetupRsvp.updated_at)
     )
     return list(result.scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# Discussion
+# ---------------------------------------------------------------------------
+
+
+async def create_discussion_post(
+    db: AsyncSession,
+    season_id: int,
+    user_id: int,
+    anchor_page: int,
+    body: str,
+    parent_id: int | None = None,
+    quote_id: int | None = None,
+) -> DiscussionPost | None:
+    """Add a post, or a reply when `parent_id` is given.
+
+    A reply always takes its parent's anchor page. Letting someone reply with a
+    later anchor would hide their reply from readers who can already see the
+    post it answers.
+    """
+    if parent_id is not None:
+        parent = await get_discussion_post(db, parent_id)
+        if parent is None or parent.season_id != season_id:
+            return None
+        # Only one level of nesting — a reply to a reply joins the same thread.
+        parent_id = parent.parent_id or parent.id
+        anchor_page = parent.anchor_page
+
+    post = DiscussionPost(
+        season_id=season_id,
+        user_id=user_id,
+        parent_id=parent_id,
+        quote_id=quote_id,
+        anchor_page=max(0, anchor_page),
+        body=body,
+    )
+    db.add(post)
+    await db.commit()
+    await db.refresh(post)
+    return post
+
+
+async def get_discussion_post(db: AsyncSession, post_id: int) -> DiscussionPost | None:
+    result = await db.execute(select(DiscussionPost).where(DiscussionPost.id == post_id))
+    return result.scalar_one_or_none()
+
+
+async def get_discussion_for_season(db: AsyncSession, season_id: int) -> list[DiscussionPost]:
+    """Top-level posts for a season, anchor-ordered, with replies preloaded.
+
+    Ordering by anchor page (not date) is what lets the reader's position cut
+    the list in one clean place instead of scattering fogged posts throughout.
+    """
+    result = await db.execute(
+        select(DiscussionPost)
+        .where(DiscussionPost.season_id == season_id, DiscussionPost.parent_id.is_(None))
+        .options(
+            selectinload(DiscussionPost.user),
+            selectinload(DiscussionPost.quote),
+            selectinload(DiscussionPost.replies).selectinload(DiscussionPost.user),
+        )
+        .order_by(DiscussionPost.anchor_page, DiscussionPost.created_at)
+    )
+    return list(result.scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# Quote wall
+# ---------------------------------------------------------------------------
+
+
+async def get_reading_progress(db: AsyncSession, season_id: int, user_id: int) -> int | None:
+    """A user's percent through a season's book, or None if they never checked in."""
+    result = await db.execute(
+        select(ReadingProgress.percent).where(
+            ReadingProgress.season_id == season_id,
+            ReadingProgress.user_id == user_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_reader_position(db: AsyncSession, book: ReadBook, user_id: int) -> int | None:
+    """How far into `book` this reader is, in pages, or None when unknowable.
+
+    None means "don't gate anything": either the book predates the app and has
+    no season, or its length was never recorded, or this reader never checked
+    in. Guessing in any of those cases would hide things from people who have
+    almost certainly finished.
+    """
+    if book.season_id is None or not book.page_count:
+        return None
+    percent = await get_reading_progress(db, book.season_id, user_id)
+    if percent is None:
+        return None
+    return round(book.page_count * max(0, min(100, percent)) / 100)
+
+
+async def get_read_book_for_season(db: AsyncSession, season_id: int) -> ReadBook | None:
+    """The shelf copy of a season's winner — where its quote wall lives."""
+    result = await db.execute(select(ReadBook).where(ReadBook.season_id == season_id))
+    return result.scalars().first()
+
+
+async def get_discussion_post_ids_for_quotes(
+    db: AsyncSession, quote_ids: list[int]
+) -> dict[int, int]:
+    """Map quote id -> the discussion post that opened from it, for cross-links."""
+    if not quote_ids:
+        return {}
+    result = await db.execute(
+        select(DiscussionPost.quote_id, DiscussionPost.id).where(
+            DiscussionPost.quote_id.in_(quote_ids)
+        )
+    )
+    return {quote_id: post_id for quote_id, post_id in result.all()}
+
+
+async def create_book_quote(
+    db: AsyncSession, read_book_id: int, user_id: int, page: int, text: str
+) -> BookQuote:
+    quote = BookQuote(read_book_id=read_book_id, user_id=user_id, page=max(0, page), text=text)
+    db.add(quote)
+    await db.commit()
+    await db.refresh(quote)
+    return quote
+
+
+async def get_quotes_for_book(db: AsyncSession, read_book_id: int) -> list[BookQuote]:
+    """Quotes for a book, page-ordered so the reader's position cuts them once."""
+    result = await db.execute(
+        select(BookQuote)
+        .where(BookQuote.read_book_id == read_book_id)
+        .options(selectinload(BookQuote.user))
+        .order_by(BookQuote.page, BookQuote.created_at)
+    )
+    return list(result.scalars().all())
+
+
+async def get_book_quote(db: AsyncSession, quote_id: int) -> BookQuote | None:
+    result = await db.execute(select(BookQuote).where(BookQuote.id == quote_id))
+    return result.scalar_one_or_none()
+
+
+async def delete_book_quote(db: AsyncSession, quote_id: int) -> bool:
+    quote = await get_book_quote(db, quote_id)
+    if quote is None:
+        return False
+    await db.delete(quote)
+    await db.commit()
+    return True
+
+
+async def delete_discussion_post(db: AsyncSession, post_id: int) -> bool:
+    post = await get_discussion_post(db, post_id)
+    if post is None:
+        return False
+    await db.delete(post)
+    await db.commit()
+    return True

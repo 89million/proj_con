@@ -138,12 +138,20 @@ class ReadBook(Base):
     cover_url: Mapped[str | None] = mapped_column(String, nullable=True)
     won: Mapped[bool] = mapped_column(Boolean, default=False)
     pending: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Both nullable: books backfilled from before the app existed have no
+    # season, and page counts aren't always recoverable. Null page_count just
+    # means quotes on this book can't be page-anchored.
+    page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    season_id: Mapped[int | None] = mapped_column(ForeignKey("seasons.id"), nullable=True)
     added_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     added_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     added_by_user: Mapped["User"] = relationship("User", back_populates="read_books_added")
     reviews: Mapped[list["BookReview"]] = relationship(
         "BookReview", back_populates="read_book", cascade="all, delete-orphan"
+    )
+    quotes: Mapped[list["BookQuote"]] = relationship(
+        "BookQuote", back_populates="read_book", cascade="all, delete-orphan"
     )
 
 
@@ -394,3 +402,60 @@ class ReadingProgress(Base):
 
     season: Mapped["Season"] = relationship("Season")
     user: Mapped["User"] = relationship("User")
+
+
+class BookQuote(Base):
+    """A passage a member saved from a book, anchored to the page it's on.
+
+    Attached to the book rather than the season, so a wall accretes across
+    every season and re-read. Readers who haven't got to the page receive
+    scrambled text (see app/fog.py), the same as discussion posts.
+    """
+
+    __tablename__ = "book_quotes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    read_book_id: Mapped[int] = mapped_column(ForeignKey("read_books.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    page: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    read_book: Mapped["ReadBook"] = relationship("ReadBook", back_populates="quotes")
+    user: Mapped["User"] = relationship("User")
+
+
+class DiscussionPost(Base):
+    """A page-anchored comment on the season's winning book.
+
+    `anchor_page` is the page the comment is about. Readers who haven't got
+    that far never receive the real words — the server fogs them first (see
+    app/fog.py). Replies inherit their parent's anchor, so a reply can never
+    surface before the post it answers.
+    """
+
+    __tablename__ = "discussion_posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    season_id: Mapped[int] = mapped_column(ForeignKey("seasons.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("discussion_posts.id"), nullable=True)
+    # A post can open from a passage: the quote lives on the book's wall (it
+    # outlasts the season) and the post carries a pointer to it. SET NULL so
+    # deleting a quote from the wall degrades the post rather than breaking it.
+    quote_id: Mapped[int | None] = mapped_column(
+        ForeignKey("book_quotes.id", ondelete="SET NULL"), nullable=True
+    )
+    anchor_page: Mapped[int] = mapped_column(Integer, nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    season: Mapped["Season"] = relationship("Season")
+    user: Mapped["User"] = relationship("User")
+    quote: Mapped["BookQuote | None"] = relationship("BookQuote")
+    parent: Mapped["DiscussionPost | None"] = relationship(
+        "DiscussionPost", back_populates="replies", remote_side=[id]
+    )
+    replies: Mapped[list["DiscussionPost"]] = relationship(
+        "DiscussionPost", back_populates="parent", cascade="all, delete-orphan"
+    )

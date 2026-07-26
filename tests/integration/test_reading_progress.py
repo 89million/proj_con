@@ -121,13 +121,31 @@ async def test_complete_page_shows_progress_section(engine, test_user, complete_
     assert 'action="/reading-progress"' in resp.text
 
 
-async def test_participants_show_at_zero_before_checking_in(
+async def test_members_who_havent_started_are_hidden_from_the_board(
     engine, db, test_user, test_admin, complete_season
 ):
-    """Every season participant appears on the board even before checking in."""
+    """A member at 0% doesn't clutter the leaderboard — only starters show.
+
+    One member checks in; the other never does. Only the starter appears, and
+    the board doesn't render a 0% row for the no-show.
+    """
+    db.add(ReadingProgress(season_id=complete_season.id, user_id=test_admin.id, percent=45))
+    await db.commit()
+
     async with make_client(engine, test_user) as client:
         resp = await client.get("/complete")
-    assert resp.text.count("0%") >= 2
+
+    assert "width: 45%" in resp.text
+    assert "width: 0%" not in resp.text
+
+
+async def test_own_slider_still_shows_at_zero(engine, db, test_user, complete_season):
+    """A reader at 0% is off the board but still gets their own check-in slider."""
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/complete")
+    # The range input defaults to the viewer's own progress (0), even though
+    # they don't appear as a leaderboard row.
+    assert 'name="percent"' in resp.text
 
 
 async def test_progress_board_sorted_by_percent(engine, db, test_user, test_admin, complete_season):

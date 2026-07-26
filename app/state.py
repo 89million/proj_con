@@ -225,6 +225,10 @@ async def maybe_advance_bracket_round(
             cover_url=winner_book.cover_url,
             won=True,
             added_by=admin.id,
+            # Carried over so the book page can page-anchor quotes and work out
+            # who has finished reading — see crud.get_reader_page_for_book.
+            page_count=winner_book.page_count,
+            season_id=season.id,
         )
         db.add(rb)
         await crud.set_season_state(db, season, SeasonState.complete)

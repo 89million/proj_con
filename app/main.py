@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app import crud, notify, seed_data, state, voting
+from app import crud, fog, notify, seed_data, state, voting
 from app.auth import (
     MEMBER_VIEW_COOKIE,
     build_authorization_url,
@@ -730,12 +730,16 @@ async def complete_page(
     champion_run = []
     meetup_ctx: dict = {"meetup": None}
     progress_ctx: dict = {"reading_progress": [], "my_progress": 0}
+    discussion_ctx: dict = {"discussion": [], "my_page": 0, "book_pages": 0, "fogged_count": 0}
     if season:
         winner_book = await crud.get_winner_book_for_season(db, season.id)
         # The meetup poll / RSVP section renders inline on this page so members
         # can vote and RSVP right where the winner is announced.
         meetup_ctx = await _build_meetup_context(db, user)
         progress_ctx = await _build_reading_progress_context(db, season.id, user)
+        discussion_ctx = await _build_discussion_context(
+            db, season, winner_book, user, progress_ctx["my_progress"]
+        )
 
         if winner_book:
             champion_run = _build_champion_run(
@@ -753,28 +757,23 @@ async def complete_page(
             "stepper_phase": "complete",
             **meetup_ctx,
             **progress_ctx,
+            **discussion_ctx,
         },
     )
 
 
 async def _build_reading_progress_context(db: AsyncSession, season_id: int, user: User) -> dict:
-    """Reading-progress entries for everyone in the season, leaderboard-sorted.
+    """Reading-progress entries for the season, leaderboard-sorted.
 
-    Season participants appear even before they've checked in (at 0%), so the
-    board always shows the whole club; non-participants show up once they set
-    progress themselves.
+    Only people who've actually started (percent > 0) appear — a wall of names
+    all sitting at 0% is noise, and it's usually stale non-checkins rather than
+    a genuine standing. Everyone still gets their own slider regardless via
+    `my_progress`, so a reader at 0% can check in and then show up.
     """
-    participants = await crud.get_participants_for_season(db, season_id)
     progress_rows = await crud.get_reading_progress_for_season(db, season_id)
     percent_by_user = {p.user_id: p.percent for p in progress_rows}
 
-    entries = [{"user": u, "percent": percent_by_user.get(u.id, 0)} for u in participants]
-    participant_ids = {u.id for u in participants}
-    entries.extend(
-        {"user": p.user, "percent": p.percent}
-        for p in progress_rows
-        if p.user_id not in participant_ids
-    )
+    entries = [{"user": p.user, "percent": p.percent} for p in progress_rows if p.percent > 0]
     entries.sort(key=lambda e: (-e["percent"], e["user"].visible_name.lower()))
 
     return {
@@ -793,6 +792,165 @@ async def update_reading_progress(
     if season:
         await crud.upsert_reading_progress(db, season.id, user.id, max(0, min(100, percent)))
     return RedirectResponse("/complete#progress", status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# Discussion (page-anchored, spoiler-fogged)
+# ---------------------------------------------------------------------------
+
+
+def _reader_page(winner_book: Book | None, percent: int) -> int:
+    """Turn a reader's stored percentage into a page number."""
+    pages = getattr(winner_book, "page_count", 0) or 0
+    return round(pages * max(0, min(100, percent)) / 100)
+
+
+async def _build_discussion_context(
+    db: AsyncSession,
+    season,
+    winner_book: Book | None,
+    user: User,
+    my_percent: int,
+) -> dict:
+    """Thread list with every body already fogged for this particular reader.
+
+    Fogging happens here rather than in the template so the real text of a post
+    the reader hasn't reached never reaches the browser at all.
+    """
+    empty = {
+        "discussion": [],
+        "my_page": 0,
+        "book_pages": 0,
+        "fogged_count": 0,
+        "read_book": None,
+        "wall_quotes": [],
+    }
+    if season is None or winner_book is None:
+        return empty
+
+    my_page = _reader_page(winner_book, my_percent)
+    posts = await crud.get_discussion_for_season(db, season.id)
+
+    def prepare(item, item_distance: int) -> dict:
+        fogged = fog.fog_text(item.body, item_distance, seed=item.id)
+        return {"post": item, "body": fogged, "fogged": fogged.is_fogged}
+
+    entries = []
+    fogged_count = 0
+    for post in posts:
+        # Distance from the anchor, not from the parent — your own post stays
+        # readable to you, but a stranger's reply on the same thread does not.
+        distance = post.anchor_page - my_page
+        own_distance = 0 if post.user_id == user.id else distance
+
+        entry = prepare(post, own_distance)
+        if entry["fogged"]:
+            fogged_count += 1
+
+        # The passage the post opened from, fogged like the post itself. The
+        # quote's own author always reads it clean, whoever wrote the post.
+        entry["quote_body"] = (
+            fog.fog_text(
+                post.quote.text,
+                0 if post.quote.user_id == user.id else distance,
+                seed=post.quote.id,
+            )
+            if post.quote
+            else None
+        )
+
+        entry["replies"] = [
+            prepare(reply, 0 if reply.user_id == user.id else distance)
+            for reply in sorted(post.replies, key=lambda r: r.created_at)
+        ]
+        entries.append(entry)
+
+    # Snapshot of the book's quote wall for the landing page: newest few,
+    # fogged for this reader, with a link through to the full wall.
+    read_book = await crud.get_read_book_for_season(db, season.id)
+    wall_quotes = []
+    if read_book is not None:
+        for q in await crud.get_quotes_for_book(db, read_book.id):
+            wall_quotes.append(
+                {
+                    "quote": q,
+                    "body": fog.fog_text(
+                        q.text,
+                        0 if q.user_id == user.id else q.page - my_page,
+                        seed=q.id,
+                    ),
+                }
+            )
+        wall_quotes.sort(key=lambda e: e["quote"].created_at, reverse=True)
+        wall_quotes = wall_quotes[:3]
+        for entry in wall_quotes:
+            entry["fogged"] = entry["body"].is_fogged
+
+    return {
+        "discussion": entries,
+        "my_page": my_page,
+        "book_pages": winner_book.page_count or 0,
+        "fogged_count": fogged_count,
+        "read_book": read_book,
+        "wall_quotes": wall_quotes,
+    }
+
+
+@app.post("/discussion", response_class=HTMLResponse)
+async def create_discussion_post(
+    body: str = Form(...),
+    anchor_page: int = Form(...),
+    quote_text: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    season = await crud.get_most_recent_complete_season(db)
+    body = body.strip()
+    if season and body:
+        winner_book = await crud.get_winner_book_for_season(db, season.id)
+        pages = (winner_book.page_count if winner_book else 0) or 0
+        page = max(0, min(anchor_page, pages))
+
+        # A post can open from a passage. The quote lands on the book's wall
+        # (it outlives the season) and the post points at it, so the two
+        # surfaces cross-link.
+        quote_id = None
+        quote_text = quote_text.strip()[:1000]
+        if quote_text:
+            read_book = await crud.get_read_book_for_season(db, season.id)
+            if read_book is not None:
+                quote = await crud.create_book_quote(db, read_book.id, user.id, page, quote_text)
+                quote_id = quote.id
+
+        await crud.create_discussion_post(db, season.id, user.id, page, body, quote_id=quote_id)
+    return RedirectResponse("/complete#discussion", status_code=302)
+
+
+@app.post("/discussion/{post_id}/reply", response_class=HTMLResponse)
+async def reply_to_discussion_post(
+    post_id: int,
+    body: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    season = await crud.get_most_recent_complete_season(db)
+    body = body.strip()
+    if season and body:
+        # anchor_page is ignored for replies — crud takes the parent's.
+        await crud.create_discussion_post(db, season.id, user.id, 0, body, parent_id=post_id)
+    return RedirectResponse("/complete#discussion", status_code=302)
+
+
+@app.post("/discussion/{post_id}/delete", response_class=HTMLResponse)
+async def delete_discussion_post(
+    post_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    post = await crud.get_discussion_post(db, post_id)
+    if post and (post.user_id == user.id or user.is_admin):
+        await crud.delete_discussion_post(db, post_id)
+    return RedirectResponse("/complete#discussion", status_code=302)
 
 
 @app.get("/history", response_class=HTMLResponse)
@@ -938,9 +1096,38 @@ async def book_detail_page(
     rb = await db.get(ReadBook, read_book_id)
     if rb is None or rb.pending:
         raise HTTPException(status_code=404, detail="Book not found.")
+
     reviews = await crud.get_reviews_for_book(db, read_book_id)
     my_review = next((r for r in reviews if r.user_id == user.id), None)
     avg_rating = round(sum(r.rating for r in reviews) / len(reviews), 1) if reviews else None
+
+    my_page = await crud.get_reader_position(db, rb, user.id)
+    percent = (
+        None if rb.season_id is None else await crud.get_reading_progress(db, rb.season_id, user.id)
+    )
+    # Reviews are a verdict on the whole book, so they're withheld until you've
+    # finished rather than compared against a page. Unknown progress counts as
+    # finished — most books here were read long ago.
+    finished = percent is None or percent >= 100
+
+    quote_rows = await crud.get_quotes_for_book(db, read_book_id)
+    # Which quotes opened a discussion thread, so each can link back to it.
+    post_by_quote = await crud.get_discussion_post_ids_for_quotes(db, [q.id for q in quote_rows])
+    quotes = [
+        {
+            "quote": q,
+            "body": fog.fog_text(
+                q.text,
+                0 if (my_page is None or q.user_id == user.id) else q.page - my_page,
+                seed=q.id,
+            ),
+            "discussion_post_id": post_by_quote.get(q.id),
+        }
+        for q in quote_rows
+    ]
+    for entry in quotes:
+        entry["fogged"] = entry["body"].is_fogged
+
     return templates.TemplateResponse(
         "book_detail.html",
         {
@@ -950,8 +1137,43 @@ async def book_detail_page(
             "reviews": reviews,
             "my_review": my_review,
             "avg_rating": avg_rating,
+            "quotes": quotes,
+            "my_page": my_page,
+            "finished": finished,
         },
     )
+
+
+@app.post("/history/book/{read_book_id}/quote", response_class=HTMLResponse)
+async def add_book_quote(
+    read_book_id: int,
+    text: str = Form(...),
+    page: int = Form(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    rb = await db.get(ReadBook, read_book_id)
+    if rb is None or rb.pending:
+        raise HTTPException(status_code=404, detail="Book not found.")
+    text = text.strip()[:1000]
+    if text:
+        await crud.create_book_quote(
+            db, read_book_id, user.id, min(page, rb.page_count or page), text
+        )
+    return RedirectResponse(f"/history/book/{read_book_id}#quotes", status_code=302)
+
+
+@app.post("/history/book/{read_book_id}/quote/{quote_id}/delete", response_class=HTMLResponse)
+async def delete_book_quote(
+    read_book_id: int,
+    quote_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    quote = await crud.get_book_quote(db, quote_id)
+    if quote and (quote.user_id == user.id or user.is_admin):
+        await crud.delete_book_quote(db, quote_id)
+    return RedirectResponse(f"/history/book/{read_book_id}#quotes", status_code=302)
 
 
 @app.post("/history/book/{read_book_id}/review", response_class=HTMLResponse)
