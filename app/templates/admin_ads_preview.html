@@ -4,45 +4,45 @@
 {% block content %}
 
 <style>
-  .ad-card { padding: 28px 24px; text-align: center; border-radius: 4px; }
-  .ad-kicker { font-size: 11px; letter-spacing: 3px; font-weight: 700; opacity: .6; margin-bottom: 4px; }
-  .ad-headline { font-family: Georgia, serif; font-weight: 800; font-size: 24px; text-transform: uppercase;
+  .monk-card { padding: 28px 24px; text-align: center; border-radius: 4px; }
+  .monk-kicker { font-size: 11px; letter-spacing: 3px; font-weight: 700; opacity: .6; margin-bottom: 4px; }
+  .monk-headline { font-family: Georgia, serif; font-weight: 800; font-size: 24px; text-transform: uppercase;
                  letter-spacing: 1px; margin-bottom: 12px; }
-  .ad-object { width: 140px; height: 120px; margin: 0 auto 14px; }
-  .ad-object svg { width: 100%; height: 100%; display: block; }
-  .ad-body { font-size: 15px; line-height: 1.5; margin-bottom: 8px; }
-  .ad-closer { font-style: italic; font-size: 12px; opacity: .7; margin-bottom: 6px; }
-  .ad-caption { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; opacity: .55; margin-bottom: 10px; }
-  .ad-disclaimer { font-size: 8px; line-height: 1.4; opacity: .5; }
-  .ad-disclaimer p { margin: 0; }
-  .ad-skip { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; opacity: .45; margin-top: 10px; }
-  .ad-starburst { position: absolute; top: -14px; right: -14px; width: 80px; height: 80px; opacity: .85; }
-  .ad-preview-tile { position: relative; overflow: hidden; }
+  .monk-object { width: 140px; height: 120px; margin: 0 auto 14px; }
+  .monk-object svg { width: 100%; height: 100%; display: block; }
+  .monk-body { font-size: 15px; line-height: 1.5; margin-bottom: 8px; }
+  .monk-closer { font-style: italic; font-size: 12px; opacity: .7; margin-bottom: 6px; }
+  .monk-caption { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; opacity: .55; margin-bottom: 10px; }
+  .monk-disclaimer { font-size: 8px; line-height: 1.4; opacity: .5; }
+  .monk-disclaimer p { margin: 0; }
+  .monk-skip { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; opacity: .45; margin-top: 10px; }
+  .monk-starburst { position: absolute; top: -14px; right: -14px; width: 80px; height: 80px; opacity: .85; }
+  .monk-preview-tile { position: relative; overflow: hidden; }
 
-  .ad-era-print .ad-card { background: #f3ead5; background-image: radial-gradient(rgba(0,0,0,.06) 1px, transparent 1.2px);
+  .monk-era-print .monk-card { background: #f3ead5; background-image: radial-gradient(rgba(0,0,0,.06) 1px, transparent 1.2px);
                             background-size: 5px 5px; color: #2a1c12; }
-  .ad-era-print .ad-headline { text-shadow: 2px 0 rgba(0,170,220,.5), -2px 0 rgba(220,0,110,.45); }
-  .ad-era-print .ad-object { color: #8a2a1a; filter: drop-shadow(2px 3px 0 rgba(0,0,0,.2)); }
-  .ad-era-print .ad-starburst { color: #c8402a; }
-  .ad-quiet.ad-era-print .ad-headline { text-shadow: none; }
+  .monk-era-print .monk-headline { text-shadow: 2px 0 rgba(0,170,220,.5), -2px 0 rgba(220,0,110,.45); }
+  .monk-era-print .monk-object { color: #8a2a1a; filter: drop-shadow(2px 3px 0 rgba(0,0,0,.2)); }
+  .monk-era-print .monk-starburst { color: #c8402a; }
+  .monk-quiet.monk-era-print .monk-headline { text-shadow: none; }
 
-  .ad-era-seventies .ad-card { background: linear-gradient(160deg, #f6dcb0, #eab868); color: #3a2410; }
-  .ad-era-seventies .ad-object { color: #7a4a1e; filter: drop-shadow(1px 2px 0 rgba(0,0,0,.15)); }
+  .monk-era-seventies .monk-card { background: linear-gradient(160deg, #f6dcb0, #eab868); color: #3a2410; }
+  .monk-era-seventies .monk-object { color: #7a4a1e; filter: drop-shadow(1px 2px 0 rgba(0,0,0,.15)); }
 
-  .ad-era-pharma .ad-card { background: #ffffff; color: #233040; border: 1px solid #d3dbe2; }
-  .ad-era-pharma .ad-headline { font-size: 20px; }
-  .ad-era-pharma .ad-object { color: #3a5468; filter: saturate(.65) drop-shadow(0 1px 0 rgba(0,0,0,.1)); }
+  .monk-era-pharma .monk-card { background: #ffffff; color: #233040; border: 1px solid #d3dbe2; }
+  .monk-era-pharma .monk-headline { font-size: 20px; }
+  .monk-era-pharma .monk-object { color: #3a5468; filter: saturate(.65) drop-shadow(0 1px 0 rgba(0,0,0,.1)); }
 
-  .ad-era-corporate .ad-card { background: #f3f5f7; color: #1c2430; border: 1px solid #e1e5ea; border-radius: 16px; }
-  .ad-era-corporate .ad-headline { font-family: -apple-system, Helvetica, Arial, sans-serif; font-weight: 800;
+  .monk-era-corporate .monk-card { background: #f3f5f7; color: #1c2430; border: 1px solid #e1e5ea; border-radius: 16px; }
+  .monk-era-corporate .monk-headline { font-family: -apple-system, Helvetica, Arial, sans-serif; font-weight: 800;
                                     text-transform: none; letter-spacing: 0; font-size: 22px; }
-  .ad-era-corporate .ad-kicker { opacity: .4; }
-  .ad-era-corporate .ad-object { color: #8c96a3; filter: grayscale(1); }
+  .monk-era-corporate .monk-kicker { opacity: .4; }
+  .monk-era-corporate .monk-object { color: #8c96a3; filter: grayscale(1); }
 
-  .ad-era-void .ad-card { background: #0a0a0a; color: #f4f4f4; }
-  .ad-era-void .ad-headline { font-family: -apple-system, Helvetica, Arial, sans-serif; font-weight: 300;
+  .monk-era-void .monk-card { background: #0a0a0a; color: #f4f4f4; }
+  .monk-era-void .monk-headline { font-family: -apple-system, Helvetica, Arial, sans-serif; font-weight: 300;
                                letter-spacing: 4px; font-size: 18px; text-transform: uppercase; }
-  .ad-era-void .ad-kicker { opacity: .5; }
+  .monk-era-void .monk-kicker { opacity: .5; }
 </style>
 
 <div class="flex items-center justify-between mb-6">
@@ -57,8 +57,8 @@
 
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
   {% for ad in ads %}
-  <div class="ad-preview-tile ad-era-{{ ad.era }}{% if ad.quiet %} ad-quiet{% endif %} rounded-xl shadow-sm">
-    <div class="ad-card">
+  <div class="monk-preview-tile monk-era-{{ ad.era }}{% if ad.quiet %} monk-quiet{% endif %} rounded-xl shadow-sm">
+    <div class="monk-card">
       {{ macros.ad_card(ad) }}
     </div>
   </div>

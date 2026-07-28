@@ -679,7 +679,7 @@
     within an hour of a deadline). Members can also opt out individually in Settings.
   </p>
   <div class="flex items-center gap-3 flex-wrap">
-    <form method="post" action="/admin/ads/toggle">
+    <form method="post" action="/admin/monk/toggle">
       {% if ads_enabled %}
       <button class="text-xs bg-forest-100 text-forest-700 border border-forest-300 px-3 py-1.5 rounded-lg font-semibold hover:bg-forest-200 transition">
         Ads are ON — turn off
@@ -690,7 +690,7 @@
       </button>
       {% endif %}
     </form>
-    <a href="/admin/ads-preview" class="text-xs text-forest-500 underline hover:no-underline">
+    <a href="/admin/monk-preview" class="text-xs text-forest-500 underline hover:no-underline">
       Preview all 16 ads →
     </a>
   </div>

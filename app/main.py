@@ -2013,7 +2013,7 @@ async def admin_backfill_covers(
 # ---------------------------------------------------------------------------
 
 
-@app.post("/admin/ads/toggle", response_class=HTMLResponse)
+@app.post("/admin/monk/toggle", response_class=HTMLResponse)
 async def admin_toggle_ads(
     db: AsyncSession = Depends(get_db),
     admin: User = Depends(require_admin),
@@ -2023,7 +2023,7 @@ async def admin_toggle_ads(
     return RedirectResponse("/admin", status_code=302)
 
 
-@app.get("/admin/ads-preview", response_class=HTMLResponse)
+@app.get("/admin/monk-preview", response_class=HTMLResponse)
 async def admin_ads_preview(
     request: Request,
     user: User = Depends(require_admin),
@@ -2035,7 +2035,7 @@ async def admin_ads_preview(
     )
 
 
-@app.post("/ads/{slug}/dismiss", response_class=HTMLResponse)
+@app.post("/monk/{slug}/dismiss", response_class=HTMLResponse)
 async def dismiss_ad(
     slug: str,
     return_to: str = Form("/"),

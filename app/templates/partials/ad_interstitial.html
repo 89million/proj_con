@@ -1,61 +1,61 @@
 {% import "partials/_macros.html" as macros %}
 <style>
-  .ad-overlay { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 24px; overflow: hidden; }
-  .ad-overlay::before { content: ""; position: absolute; inset: 0; background: rgba(0,0,0,.55);
-                         animation: ad-backdrop-in var(--ad-in-dur, 1000ms) steps(10, jump-end) forwards; }
-  .ad-frame { position: relative; z-index: 1; max-width: 420px; width: 100%; max-height: 92vh; overflow-y: auto;
+  .monk-overlay { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 24px; overflow: hidden; }
+  .monk-overlay::before { content: ""; position: absolute; inset: 0; background: rgba(0,0,0,.55);
+                         animation: monk-backdrop-in var(--monk-in-dur, 1000ms) steps(10, jump-end) forwards; }
+  .monk-frame { position: relative; z-index: 1; max-width: 420px; width: 100%; max-height: 92vh; overflow-y: auto;
               padding: 32px 28px; text-align: center; border-radius: 4px; box-shadow: 0 20px 60px rgba(0,0,0,.4); }
-  .ad-kicker { font-size: 11px; letter-spacing: 3px; font-weight: 700; opacity: .6; margin-bottom: 4px; }
-  .ad-headline { font-family: Georgia, serif; font-weight: 800; font-size: 26px; text-transform: uppercase;
+  .monk-kicker { font-size: 11px; letter-spacing: 3px; font-weight: 700; opacity: .6; margin-bottom: 4px; }
+  .monk-headline { font-family: Georgia, serif; font-weight: 800; font-size: 26px; text-transform: uppercase;
                  letter-spacing: 1px; margin-bottom: 12px; }
-  .ad-object { width: 150px; height: 130px; margin: 0 auto 14px; }
-  .ad-object svg { width: 100%; height: 100%; display: block; }
-  .ad-body { font-size: 15px; line-height: 1.5; margin-bottom: 8px; }
-  .ad-closer { font-style: italic; font-size: 12px; opacity: .7; margin-bottom: 6px; }
-  .ad-caption { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; opacity: .55; margin-bottom: 14px; }
-  .ad-disclaimer { font-size: 8px; line-height: 1.4; opacity: .5; margin-bottom: 16px; }
-  .ad-disclaimer p { margin: 0; }
-  .ad-skip { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; opacity: .45; margin-bottom: 10px; }
-  .ad-skip-n { display: inline-block; }
-  .ad-skip-n.ad-skip-glitch { color: #c8402a; text-shadow: 2px 0 rgba(0,200,255,.6), -2px 0 rgba(255,0,140,.6);
+  .monk-object { width: 150px; height: 130px; margin: 0 auto 14px; }
+  .monk-object svg { width: 100%; height: 100%; display: block; }
+  .monk-body { font-size: 15px; line-height: 1.5; margin-bottom: 8px; }
+  .monk-closer { font-style: italic; font-size: 12px; opacity: .7; margin-bottom: 6px; }
+  .monk-caption { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; opacity: .55; margin-bottom: 14px; }
+  .monk-disclaimer { font-size: 8px; line-height: 1.4; opacity: .5; margin-bottom: 16px; }
+  .monk-disclaimer p { margin: 0; }
+  .monk-skip { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; opacity: .45; margin-bottom: 10px; }
+  .monk-skip-n { display: inline-block; }
+  .monk-skip-n.monk-skip-glitch { color: #c8402a; text-shadow: 2px 0 rgba(0,200,255,.6), -2px 0 rgba(255,0,140,.6);
                                transform: skewX(-10deg) scaleY(1.15); }
-  .ad-dismiss-btn { padding: 10px 28px; border-radius: 999px; font-weight: 600; font-size: 13px; cursor: pointer;
+  .monk-dismiss-btn { padding: 10px 28px; border-radius: 999px; font-weight: 600; font-size: 13px; cursor: pointer;
                      border: 2px solid currentColor; background: transparent; transition: opacity .2s; }
-  .ad-dismiss-btn:disabled { opacity: .25; cursor: not-allowed; }
-  .ad-starburst { position: absolute; top: -14px; right: -14px; width: 90px; height: 90px; opacity: .85; }
+  .monk-dismiss-btn:disabled { opacity: .25; cursor: not-allowed; }
+  .monk-starburst { position: absolute; top: -14px; right: -14px; width: 90px; height: 90px; opacity: .85; }
 
-  .ad-frame.ad-era-print { background: #f3ead5; background-image: radial-gradient(rgba(0,0,0,.06) 1px, transparent 1.2px);
+  .monk-frame.monk-era-print { background: #f3ead5; background-image: radial-gradient(rgba(0,0,0,.06) 1px, transparent 1.2px);
                             background-size: 5px 5px; color: #2a1c12; border: 1px solid #d8c8a0; }
-  .ad-frame.ad-era-print .ad-headline { text-shadow: 2px 0 rgba(0,170,220,.5), -2px 0 rgba(220,0,110,.45); }
-  .ad-frame.ad-era-print .ad-object { color: #8a2a1a; filter: drop-shadow(2px 3px 0 rgba(0,0,0,.2)); }
-  .ad-frame.ad-era-print .ad-starburst { color: #c8402a; }
-  .ad-frame.ad-era-print .ad-dismiss-btn { border-color: #8a2a1a; color: #8a2a1a; }
-  .ad-frame.ad-quiet.ad-era-print .ad-headline { text-shadow: none; }
+  .monk-frame.monk-era-print .monk-headline { text-shadow: 2px 0 rgba(0,170,220,.5), -2px 0 rgba(220,0,110,.45); }
+  .monk-frame.monk-era-print .monk-object { color: #8a2a1a; filter: drop-shadow(2px 3px 0 rgba(0,0,0,.2)); }
+  .monk-frame.monk-era-print .monk-starburst { color: #c8402a; }
+  .monk-frame.monk-era-print .monk-dismiss-btn { border-color: #8a2a1a; color: #8a2a1a; }
+  .monk-frame.monk-quiet.monk-era-print .monk-headline { text-shadow: none; }
 
-  .ad-frame.ad-era-seventies { background: linear-gradient(160deg, #f6dcb0, #eab868); color: #3a2410; border: 1px solid #d9a856; }
-  .ad-frame.ad-era-seventies .ad-object { color: #7a4a1e; filter: drop-shadow(1px 2px 0 rgba(0,0,0,.15)); }
-  .ad-frame.ad-era-seventies .ad-dismiss-btn { border-color: #7a4a1e; color: #7a4a1e; }
+  .monk-frame.monk-era-seventies { background: linear-gradient(160deg, #f6dcb0, #eab868); color: #3a2410; border: 1px solid #d9a856; }
+  .monk-frame.monk-era-seventies .monk-object { color: #7a4a1e; filter: drop-shadow(1px 2px 0 rgba(0,0,0,.15)); }
+  .monk-frame.monk-era-seventies .monk-dismiss-btn { border-color: #7a4a1e; color: #7a4a1e; }
 
-  .ad-frame.ad-era-pharma { background: #ffffff; color: #233040; border: 1px solid #d3dbe2; }
-  .ad-frame.ad-era-pharma .ad-headline { font-size: 22px; }
-  .ad-frame.ad-era-pharma .ad-object { color: #3a5468; filter: saturate(.65) drop-shadow(0 1px 0 rgba(0,0,0,.1)); }
-  .ad-frame.ad-era-pharma .ad-dismiss-btn { border-color: #3a5468; color: #3a5468; }
+  .monk-frame.monk-era-pharma { background: #ffffff; color: #233040; border: 1px solid #d3dbe2; }
+  .monk-frame.monk-era-pharma .monk-headline { font-size: 22px; }
+  .monk-frame.monk-era-pharma .monk-object { color: #3a5468; filter: saturate(.65) drop-shadow(0 1px 0 rgba(0,0,0,.1)); }
+  .monk-frame.monk-era-pharma .monk-dismiss-btn { border-color: #3a5468; color: #3a5468; }
 
-  .ad-frame.ad-era-corporate { background: #f3f5f7; color: #1c2430; border: 1px solid #e1e5ea; border-radius: 16px; }
-  .ad-frame.ad-era-corporate .ad-headline { font-family: -apple-system, Helvetica, Arial, sans-serif; font-weight: 800;
+  .monk-frame.monk-era-corporate { background: #f3f5f7; color: #1c2430; border: 1px solid #e1e5ea; border-radius: 16px; }
+  .monk-frame.monk-era-corporate .monk-headline { font-family: -apple-system, Helvetica, Arial, sans-serif; font-weight: 800;
                                     text-transform: none; letter-spacing: 0; font-size: 24px; }
-  .ad-frame.ad-era-corporate .ad-kicker { opacity: .4; }
-  .ad-frame.ad-era-corporate .ad-object { color: #8c96a3; filter: grayscale(1); }
-  .ad-frame.ad-era-corporate .ad-dismiss-btn { border-color: #1c2430; color: #1c2430; border-radius: 8px; }
+  .monk-frame.monk-era-corporate .monk-kicker { opacity: .4; }
+  .monk-frame.monk-era-corporate .monk-object { color: #8c96a3; filter: grayscale(1); }
+  .monk-frame.monk-era-corporate .monk-dismiss-btn { border-color: #1c2430; color: #1c2430; border-radius: 8px; }
 
-  .ad-frame.ad-era-void { background: #0a0a0a; color: #f4f4f4; box-shadow: none; border: none; }
-  .ad-frame.ad-era-void .ad-headline { font-family: -apple-system, Helvetica, Arial, sans-serif; font-weight: 300;
+  .monk-frame.monk-era-void { background: #0a0a0a; color: #f4f4f4; box-shadow: none; border: none; }
+  .monk-frame.monk-era-void .monk-headline { font-family: -apple-system, Helvetica, Arial, sans-serif; font-weight: 300;
                                letter-spacing: 4px; font-size: 20px; text-transform: uppercase; }
-  .ad-frame.ad-era-void .ad-kicker { opacity: .5; }
-  .ad-frame.ad-era-void .ad-dismiss-btn { border-color: #f4f4f4; color: #f4f4f4; }
+  .monk-frame.monk-era-void .monk-kicker { opacity: .5; }
+  .monk-frame.monk-era-void .monk-dismiss-btn { border-color: #f4f4f4; color: #f4f4f4; }
 
   /* The overlay doesn't fade in cleanly — it stutters into place. */
-  @keyframes ad-backdrop-in {
+  @keyframes monk-backdrop-in {
     0%   { opacity: 0; }
     8%   { opacity: .12; }
     18%  { opacity: .05; }
@@ -71,7 +71,7 @@
      screen — this is the point, not a bug — over a duration set per-show
      by JS (3-8s). A short flicker at the very start, then a long, visible,
      annoying crawl into place with a bit of overshoot/wobble along the way. */
-  @keyframes ad-in-top {
+  @keyframes monk-in-top {
     0%  { opacity: 0; transform: translateY(-140vh); }
     4%  { opacity: .4; } 8% { opacity: 1; }
     35% { transform: translateY(-85vh) translateX(2vw) rotate(1deg); }
@@ -81,7 +81,7 @@
     94% { transform: translateY(2vh); }
     100% { transform: translateY(0); }
   }
-  @keyframes ad-in-upper-right {
+  @keyframes monk-in-upper-right {
     0%  { opacity: 0; transform: translate(85vw, -85vh) rotate(12deg); }
     4%  { opacity: .4; } 8% { opacity: 1; }
     35% { transform: translate(48vw, -46vh) rotate(6deg); }
@@ -90,7 +90,7 @@
     90% { transform: translate(-1vw, 1vh) rotate(0deg); }
     100% { transform: translate(0, 0) rotate(0deg); }
   }
-  @keyframes ad-in-left {
+  @keyframes monk-in-left {
     0%  { opacity: 0; transform: translateX(-140vw); }
     4%  { opacity: .4; } 8% { opacity: 1; }
     35% { transform: translateX(-80vw) translateY(2vh); }
@@ -99,7 +99,7 @@
     90% { transform: translateX(2vw); }
     100% { transform: translateX(0); }
   }
-  @keyframes ad-in-lower-left {
+  @keyframes monk-in-lower-left {
     0%  { opacity: 0; transform: translate(-85vw, 85vh) rotate(-10deg); }
     4%  { opacity: .4; } 8% { opacity: 1; }
     35% { transform: translate(-46vw, 48vh) rotate(-5deg); }
@@ -108,7 +108,7 @@
     90% { transform: translate(1vw, -1vh); }
     100% { transform: translate(0, 0) rotate(0deg); }
   }
-  @keyframes ad-in-bottom {
+  @keyframes monk-in-bottom {
     0%  { opacity: 0; transform: translateY(140vh); }
     4%  { opacity: .4; } 8% { opacity: 1; }
     35% { transform: translateY(80vh) translateX(-2vw); }
@@ -117,7 +117,7 @@
     90% { transform: translateY(-2vh); }
     100% { transform: translateY(0); }
   }
-  @keyframes ad-in-expand {
+  @keyframes monk-in-expand {
     0%  { opacity: 0; transform: scale(.02); }
     4%  { opacity: .5; } 8% { opacity: 1; }
     40% { transform: scale(.3); }
@@ -126,7 +126,7 @@
     90% { transform: scale(1.06); }
     100% { transform: scale(1); }
   }
-  @keyframes ad-in-spiral {
+  @keyframes monk-in-spiral {
     0%  { opacity: 0; transform: translate(55vw, 55vh) rotate(-340deg) scale(.05); }
     4%  { opacity: .4; } 8% { opacity: 1; }
     35% { transform: translate(30vw, 30vh) rotate(-180deg) scale(.4); }
@@ -137,15 +137,15 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .ad-overlay::before { animation: none !important; }
-    .ad-frame { animation: none !important; }
-    .ad-malfunction-msg.ad-typing::after { animation: none !important; }
+    .monk-overlay::before { animation: none !important; }
+    .monk-frame { animation: none !important; }
+    .monk-malfunction-msg.monk-typing::after { animation: none !important; }
   }
 
   @media (max-width: 600px) {
-    .ad-frame { padding: 22px 18px; }
-    .ad-object { width: 110px; height: 96px; }
-    .ad-headline { font-size: 20px; }
+    .monk-frame { padding: 22px 18px; }
+    .monk-object { width: 110px; height: 96px; }
+    .monk-headline { font-size: 20px; }
   }
 
   /* A "malfunction" — the crawl freezes mid-flight and this takes over
@@ -154,45 +154,45 @@
      its crawl back up like nothing happened. Deliberately still and flat —
      a blue screen, not a fireworks show. The unease is the calm,
      bureaucratic tone curdling, not motion. */
-  .ad-malfunction { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center;
+  .monk-malfunction { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center;
                     justify-content: center; cursor: pointer; padding: 40px; background: #14328c; }
-  .ad-malfunction[hidden] { display: none; }
-  .ad-malfunction-inner { max-width: 480px; width: 100%; text-align: left;
+  .monk-malfunction[hidden] { display: none; }
+  .monk-malfunction-inner { max-width: 480px; width: 100%; text-align: left;
                           font-family: 'SFMono-Regular', Consolas, 'Courier New', monospace; color: #fff; }
-  .ad-malfunction-face { font-size: 60px; font-weight: 400; margin: 0 0 20px; line-height: 1; }
-  .ad-malfunction-headline { font-size: 19px; line-height: 1.4; margin: 0 0 20px; }
-  .ad-malfunction-msg { font-size: 13px; line-height: 1.7; opacity: .85; min-height: 4.9em; }
-  .ad-malfunction-msg.ad-typing::after { content: '_'; animation: ad-malfunction-cursor 500ms steps(1) infinite; }
-  @keyframes ad-malfunction-cursor {
+  .monk-malfunction-face { font-size: 60px; font-weight: 400; margin: 0 0 20px; line-height: 1; }
+  .monk-malfunction-headline { font-size: 19px; line-height: 1.4; margin: 0 0 20px; }
+  .monk-malfunction-msg { font-size: 13px; line-height: 1.7; opacity: .85; min-height: 4.9em; }
+  .monk-malfunction-msg.monk-typing::after { content: '_'; animation: monk-malfunction-cursor 500ms steps(1) infinite; }
+  @keyframes monk-malfunction-cursor {
     0%, 100% { opacity: 1; }
     50%      { opacity: 0; }
   }
 </style>
 
-<div id="ad-overlay" class="ad-overlay" role="dialog" aria-modal="true" aria-label="Advertisement: THE MONK — {{ ad.product }}"
+<div id="monk-overlay" class="monk-overlay" role="dialog" aria-modal="true" aria-label="Advertisement: THE MONK — {{ ad.product }}"
      data-first-ad="{{ '1' if ad.slug == ALL_ADS[0].slug else '' }}">
-  <div id="ad-frame" class="ad-frame ad-era-{{ ad.era }}{% if ad.quiet %} ad-quiet{% endif %}" tabindex="-1">
+  <div id="monk-frame" class="monk-frame monk-era-{{ ad.era }}{% if ad.quiet %} monk-quiet{% endif %}" tabindex="-1">
     {{ macros.ad_card(ad) }}
-    <form method="post" action="/ads/{{ ad.slug }}/dismiss" class="ad-dismiss-form">
+    <form method="post" action="/monk/{{ ad.slug }}/dismiss" class="monk-dismiss-form">
       <input type="hidden" name="return_to" value="{{ request.url.path }}" />
-      <button type="submit" id="ad-dismiss-btn" class="ad-dismiss-btn">Back to site</button>
+      <button type="submit" id="monk-dismiss-btn" class="monk-dismiss-btn">Back to site</button>
     </form>
   </div>
 </div>
-<div id="ad-malfunction" class="ad-malfunction" hidden aria-hidden="true">
-  <div class="ad-malfunction-inner">
-    <p class="ad-malfunction-face">:(</p>
-    <p class="ad-malfunction-headline">THE MONK ran into a problem.</p>
-    <p id="ad-malfunction-msg" class="ad-malfunction-msg"></p>
+<div id="monk-malfunction" class="monk-malfunction" hidden aria-hidden="true">
+  <div class="monk-malfunction-inner">
+    <p class="monk-malfunction-face">:(</p>
+    <p class="monk-malfunction-headline">THE MONK ran into a problem.</p>
+    <p id="monk-malfunction-msg" class="monk-malfunction-msg"></p>
   </div>
 </div>
 <script>
 (function () {
-  var overlay = document.getElementById('ad-overlay');
+  var overlay = document.getElementById('monk-overlay');
   if (!overlay) return;
-  var frame = document.getElementById('ad-frame');
-  var btn = document.getElementById('ad-dismiss-btn');
-  var form = overlay.querySelector('.ad-dismiss-form');
+  var frame = document.getElementById('monk-frame');
+  var btn = document.getElementById('monk-dismiss-btn');
+  var form = overlay.querySelector('.monk-dismiss-form');
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   // The very first ad a member ever sees always ends in a long blue screen
   // when they try to leave — it's the intro to the whole bit. Every ad
@@ -266,8 +266,8 @@
       'This resolves itself quickly now.'
     ];
   }
-  var malfunctionEl = document.getElementById('ad-malfunction');
-  var malfunctionMsgEl = document.getElementById('ad-malfunction-msg');
+  var malfunctionEl = document.getElementById('monk-malfunction');
+  var malfunctionMsgEl = document.getElementById('monk-malfunction-msg');
   var malfunctionScheduleTimer = null;
   var malfunctionHideTimer = null;
   var typeTimer = null;
@@ -281,13 +281,13 @@
   function typeMessage(text, onDone, speed) {
     clearTimeout(typeTimer);
     malfunctionMsgEl.textContent = '';
-    malfunctionMsgEl.classList.add('ad-typing');
+    malfunctionMsgEl.classList.add('monk-typing');
     var lo = speed ? speed[0] : 22;
     var hi = speed ? speed[1] : 32;
     var i = 0;
     (function step() {
       if (i >= text.length) {
-        malfunctionMsgEl.classList.remove('ad-typing');
+        malfunctionMsgEl.classList.remove('monk-typing');
         if (onDone) onDone();
         return;
       }
@@ -377,7 +377,7 @@
   // (or expands from nothing, or spirals in) over 3-8 seconds, a different
   // bad entrance every time. Purely decorative; it never blocks anything
   // (except on the rare show where the malfunction panel above takes over).
-  var ENTRANCES = ['ad-in-top', 'ad-in-upper-right', 'ad-in-left', 'ad-in-lower-left', 'ad-in-bottom', 'ad-in-expand', 'ad-in-spiral'];
+  var ENTRANCES = ['monk-in-top', 'monk-in-upper-right', 'monk-in-left', 'monk-in-lower-left', 'monk-in-bottom', 'monk-in-expand', 'monk-in-spiral'];
   function playEntrance() {
     clearTimeout(malfunctionScheduleTimer);
     clearTimeout(malfunctionHideTimer);
@@ -386,7 +386,7 @@
     var name = ENTRANCES[Math.floor(Math.random() * ENTRANCES.length)];
     var duration = 3000 + Math.floor(Math.random() * 5000); // 3-8s
     var steps = 14 + Math.floor(Math.random() * 16); // 14-29 stutter steps
-    overlay.style.setProperty('--ad-in-dur', duration + 'ms');
+    overlay.style.setProperty('--monk-in-dur', duration + 'ms');
     frame.style.animation = 'none';
     void frame.offsetWidth; // reflow so the animation restarts every show
     frame.style.animation = name + ' ' + duration + 'ms steps(' + steps + ', jump-end) forwards';
@@ -452,7 +452,7 @@
   var skipTimer = null;
   function startSkipTimer() {
     if (skipTimer) clearInterval(skipTimer);
-    var skipEl = frame.querySelector('.ad-skip-n');
+    var skipEl = frame.querySelector('.monk-skip-n');
     if (!skipEl) return;
     var LEGIT = [5, 4, 3, 2, 1];
     var CHAOS = ['∞', '░▒▓', '¿?', '—', '※', '◆◆', '···', '‽', '⚠', '∴', '≈', '§', '¡', '∅', '†', 4, 7, 2, 4];
@@ -469,7 +469,7 @@
         if (legitIndex >= LEGIT.length) legitIndex = 0;
       }
       skipEl.textContent = value;
-      skipEl.classList.toggle('ad-skip-glitch', !/^\d+$/.test(String(value)));
+      skipEl.classList.toggle('monk-skip-glitch', !/^\d+$/.test(String(value)));
     }, 900);
   }
 
