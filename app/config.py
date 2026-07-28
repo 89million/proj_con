@@ -7,11 +7,13 @@ class Settings(BaseSettings):
     google_redirect_uri: str = "http://localhost:8000/auth/callback"
     secret_key: str
     database_url: str = "postgresql+asyncpg://bookclub:bookclub@localhost:5432/bookclub"
+    # Wherever this process happens to be listening. Never put this in anything
+    # that leaves the building — it is localhost on any dev machine, and
+    # notifications go out over Resend and Discord for real even when the app is
+    # run locally, so links built from it reach members as dead localhost URLs.
     app_base_url: str = "http://localhost:8000"
-    # Where the club actually lives, as opposed to wherever this process happens
-    # to be listening. Deliberately not derived from app_base_url: notifications
-    # go out over Resend and Discord for real even when the app is run locally,
-    # and a footer pointing at localhost:8000 is no use to anyone who receives one.
+    # Where the club actually lives. Every link in an outgoing email or Discord
+    # message is built from this one.
     site_url: str = "https://stumblingbookclub.com"
     allowed_emails: str = ""  # comma-separated; empty = allow all (dev only)
     gemini_api_key: str = ""

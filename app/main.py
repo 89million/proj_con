@@ -1872,9 +1872,9 @@ async def create_season(
             f"A scheduling poll opens to pick when and where we meet.</li>"
             f"</ol>"
             f"{deadline_html}"
-            f'<p><a href="{settings.app_base_url}/submit">Nominate your book →</a></p>'
+            f'<p><a href="{settings.site_url}/submit">Nominate your book →</a></p>'
             f'<p style="font-size:0.85em;color:#888">'
-            f'<a href="{settings.app_base_url}/how-it-works">Full details on how it works</a>'
+            f'<a href="{settings.site_url}/how-it-works">Full details on how it works</a>'
             f"</p>"
         ),
     )
@@ -2088,7 +2088,7 @@ async def nudge_stragglers(
         straggler_names = [u.visible_name for u in stragglers]
         straggler_emails = [u.email for u in stragglers if u.email and u.email_notifications]
         await notify.send_nudge(
-            straggler_names, straggler_emails, season.name, phase, settings.app_base_url
+            straggler_names, straggler_emails, season.name, phase, settings.site_url
         )
 
     season.last_nudge_at = datetime.utcnow()

@@ -20,17 +20,26 @@ def _discord_footer() -> str:
     return f"\n\n[{SITE_NAME}]({settings.site_url})"
 
 
-def _email_footer() -> str:
-    """A named link to the club, in the app's own forest palette.
+def _email_cta() -> str:
+    """A club link the reader can actually see.
 
-    Inline styles only, and a table-free single paragraph — Gmail and Outlook
-    strip <style> blocks, so anything set in a stylesheet would arrive bare.
+    Deliberately not shaped like a signature. The first version of this was a
+    horizontal rule followed by small grey text, which is exactly what Gmail's
+    "show trimmed content" heuristic folds away behind an ellipsis — the link
+    was in every email and visible in none of them. So: no rule, body-sized
+    type, real contrast.
+
+    The label is the bare address rather than the club's name so that a client
+    stripping the inline styles still leaves something that reads as a link.
+    Inline styles only, since Gmail and Outlook drop <style> blocks entirely.
     """
+    label = settings.site_url.split("://", 1)[-1].rstrip("/")
     return (
-        '<p style="margin:28px 0 0;padding-top:14px;border-top:1px solid #d9f0d4;'
-        'font-family:Georgia,serif;font-size:13px;color:#3d6b36;">'
-        f'<a href="{settings.site_url}" style="color:#3d6b36;">{SITE_NAME}</a>'
-        "</p>"
+        '<p style="margin:26px 0 0;">'
+        f'<a href="{settings.site_url}" style="display:inline-block;background:#153d12;'
+        "color:#ffffff;font-family:-apple-system,'Segoe UI',Arial,sans-serif;font-size:16px;"
+        'font-weight:bold;padding:13px 24px;border-radius:8px;text-decoration:none;">'
+        f"{label}</a></p>"
     )
 
 
@@ -60,7 +69,7 @@ async def send_email(to_emails: list[str], subject: str, body: str) -> None:
     api_key = settings.resend_api_key
     if not api_key or not to_emails:
         return
-    body = body + _email_footer()
+    body = body + _email_cta()
     async with httpx.AsyncClient() as client:
         for email in to_emails:
             try:

@@ -54,7 +54,7 @@ async def maybe_advance_from_submit(
             season.ranking_deadline = datetime.utcnow() + timedelta(days=season.ranking_days)
         await crud.set_season_state(db, season, SeasonState.ranking)
         emails = await _participant_emails(db, season.id)
-        url = settings.app_base_url
+        url = settings.site_url
         deadline_note = ""
         deadline_html = ""
         if season.ranking_deadline:
@@ -123,7 +123,7 @@ async def maybe_advance_from_ranking(
 
         await crud.set_season_state(db, season, SeasonState.bracket)
         emails = await _participant_emails(db, season.id)
-        url = settings.app_base_url
+        url = settings.site_url
         bracket_deadline_note = ""
         bracket_deadline_html = ""
         if season.bracket_round_hours:
@@ -208,7 +208,7 @@ async def maybe_advance_bracket_round(
     all_winner_ids = list(dict.fromkeys(m.winner_id for m in matchups))  # ordered, deduped
 
     emails = await _participant_emails(db, season.id)
-    url = settings.app_base_url
+    url = settings.site_url
 
     if len(all_winner_ids) == 1:
         # One book remains — season complete
@@ -343,7 +343,7 @@ async def check_24h_reminders(db: AsyncSession, season: Season) -> None:
     """Fire a 24-hour reminder for the active phase deadline if not yet sent."""
     now = datetime.utcnow()
     window = timedelta(hours=24)
-    url = settings.app_base_url
+    url = settings.site_url
 
     if season.state == SeasonState.submit and season.submit_deadline:
         deadline = season.submit_deadline
@@ -420,7 +420,7 @@ async def check_meetup_24h_reminder(db: AsyncSession, meetup: "Meetup") -> None:
         season_name,
         "Meetup voting",
         meetup.deadline.strftime("%a %b %d at %H:%M UTC"),
-        settings.app_base_url,
+        settings.site_url,
     )
     meetup.reminder_sent = True
     await db.commit()
@@ -430,7 +430,7 @@ async def check_1h_reminders(db: AsyncSession, season: Season) -> None:
     """Fire a 1-hour urgent reminder for the active phase deadline if not yet sent."""
     now = datetime.utcnow()
     window = timedelta(hours=1)
-    url = settings.app_base_url
+    url = settings.site_url
 
     if season.state == SeasonState.submit and season.submit_deadline:
         deadline = season.submit_deadline
@@ -507,7 +507,7 @@ async def check_meetup_1h_reminder(db: AsyncSession, meetup: "Meetup") -> None: 
         season_name,
         "Meetup voting",
         meetup.deadline.strftime("%a %b %d at %H:%M UTC"),
-        settings.app_base_url,
+        settings.site_url,
     )
     meetup.reminder_1h_sent = True
     await db.commit()
