@@ -675,8 +675,10 @@
 <section class="mt-8 bg-white border border-forest-100 rounded-xl p-5 shadow-sm">
   <h2 class="font-semibold text-forest-600 mb-2">THE MONK ads</h2>
   <p class="text-sm text-forest-500 mb-3">
-    Fake ad interstitials that occasionally interrupt logged-in members (2–3x/week max, never
-    within an hour of a deadline). Members can also opt out individually in Settings.
+    Fake ad interstitials for logged-in members. Each member walks all {{ ALL_ADS|length }} in
+    order, then never sees another. At most one every {{ AD_MIN_GAP_SECONDS }}s, and only on a
+    page load — never mid-ranking or mid-bracket, and never within an hour of a deadline.
+    Members can opt out in Settings; switching back on restarts them at ad #1.
   </p>
   <div class="flex items-center gap-3 flex-wrap">
     <form method="post" action="/admin/monk/toggle">

@@ -17,14 +17,20 @@ from datetime import timedelta
 
 NEAR_DEADLINE_BUFFER = timedelta(hours=1)
 
-# Just long enough that the redirect landing right after a dismiss doesn't
-# itself immediately qualify for the next ad — without this, dismissing ad
-# N redirects to a page that instantly shows ad N+1, chaining through all 16
-# in one go instead of "one per real visit." The comparison happens entirely
-# in the database (see crud.recent_ad_impression_exists) — comparing a
-# stored timestamp against Python's own clock is a footgun the moment the
-# two disagree on timezone.
-MIN_GAP_SECONDS = 45
+# The floor between two ads. Its original job was narrow: the redirect landing
+# right after a dismiss must not itself immediately qualify, or dismissing ad N
+# lands on a page that instantly shows ad N+1 and the member gets marched
+# through all 16 in one go. That redirect completes in about a second, so
+# anything above a few seconds does the job; the rest of the value is purely
+# how often a member who is moving around the site gets interrupted.
+#
+# Note this is a floor, not a schedule — an ad is only ever rendered on a page
+# load, so nothing appears while someone sits still on one page.
+#
+# The comparison happens entirely in the database (see
+# crud.recent_ad_impression_exists) — comparing a stored timestamp against
+# Python's own clock is a footgun the moment the two disagree on timezone.
+MIN_GAP_SECONDS = 15
 
 
 # ---------------------------------------------------------------------------

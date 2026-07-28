@@ -76,6 +76,10 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["unescape"] = _html.unescape
 templates.env.globals["ALL_ADS"] = ads.ADS
+# Exposed so the admin panel can describe the real cadence rather than a
+# hardcoded claim — the old copy promised "2–3x/week max", which the code has
+# never enforced.
+templates.env.globals["AD_MIN_GAP_SECONDS"] = ads.MIN_GAP_SECONDS
 
 
 # ---------------------------------------------------------------------------
@@ -254,9 +258,19 @@ async def _near_any_deadline(db: AsyncSession) -> bool:
 
 
 async def get_pending_ad(db: AsyncSession, user: User) -> ads.Ad | None:
-    """The THE MONK ad to show this member on this page load, if any. Only wire
-    this into GET routes that are safe to interrupt — never /ranking or /bracket,
-    never a POST/form-submit flow."""
+    """The THE MONK ad to show this member on this page load, if any.
+
+    Only wire this into GET routes that are safe to interrupt — never /ranking
+    or /bracket, never a POST/form-submit flow. This is the whole of the
+    "never interrupt anything important" rule: an ad can only appear where it
+    has been explicitly invited, so a page is safe by default and adding one
+    is a deliberate act. That matters more the shorter ads.MIN_GAP_SECONDS
+    gets, since the gap governs how often members are interrupted but not
+    where.
+
+    Currently invited on: /how-it-works, /submit, /complete, /history,
+    /meetup, /settings, /ideas.
+    """
     near_deadline = await _near_any_deadline(db)
     return await crud.get_pending_ad(db, user, near_deadline=near_deadline)
 
