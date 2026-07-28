@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     secret_key: str
     database_url: str = "postgresql+asyncpg://bookclub:bookclub@localhost:5432/bookclub"
     app_base_url: str = "http://localhost:8000"
+    # Where the club actually lives, as opposed to wherever this process happens
+    # to be listening. Deliberately not derived from app_base_url: notifications
+    # go out over Resend and Discord for real even when the app is run locally,
+    # and a footer pointing at localhost:8000 is no use to anyone who receives one.
+    site_url: str = "https://stumblingbookclub.com"
     allowed_emails: str = ""  # comma-separated; empty = allow all (dev only)
     gemini_api_key: str = ""
     notifications_enabled: bool = True

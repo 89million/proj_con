@@ -40,6 +40,22 @@
     </label>
   </div>
 
+  <!-- THE MONK ads -->
+  <div>
+    <label class="flex items-center gap-3 cursor-pointer">
+      <input type="hidden" name="show_ads" value="off" />
+      <input
+        type="checkbox" name="show_ads" value="on"
+        {% if not user.ads_opted_out %}checked{% endif %}
+        class="w-4 h-4 rounded border-forest-300 text-forest-600 focus:ring-forest-400"
+      />
+      <div>
+        <span class="text-sm font-medium text-forest-700">Show THE MONK ads</span>
+        <p class="text-xs text-forest-400">No, por favor.</p>
+      </div>
+    </label>
+  </div>
+
   <button type="submit" class="bg-forest-600 text-white px-6 py-2 rounded-lg font-semibold hover:bg-forest-500 transition">
     Save
   </button>

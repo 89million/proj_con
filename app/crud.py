@@ -1,13 +1,16 @@
 """All database read/write operations."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from rapidfuzz.distance import Levenshtein
-from sqlalchemy import and_, func, select
+from sqlalchemy import DateTime, and_, cast, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app import ads
 from app.models import (
+    AdImpression,
+    AppSetting,
     Book,
     BookQuote,
     BookReview,
@@ -1598,3 +1601,105 @@ async def delete_discussion_post(db: AsyncSession, post_id: int) -> bool:
     await db.delete(post)
     await db.commit()
     return True
+
+
+# ---------------------------------------------------------------------------
+# THE MONK ads
+# ---------------------------------------------------------------------------
+
+
+async def get_app_settings(db: AsyncSession) -> AppSetting:
+    result = await db.execute(select(AppSetting).where(AppSetting.id == 1))
+    row = result.scalar_one_or_none()
+    if row is None:
+        row = AppSetting(id=1, ads_enabled=True)
+        db.add(row)
+        await db.commit()
+        await db.refresh(row)
+    return row
+
+
+async def set_ads_enabled(db: AsyncSession, enabled: bool) -> None:
+    row = await get_app_settings(db)
+    row.ads_enabled = enabled
+    await db.commit()
+
+
+async def get_seen_ad_slugs(db: AsyncSession, user_id: int) -> set[str]:
+    result = await db.execute(select(AdImpression.ad_slug).where(AdImpression.user_id == user_id))
+    return {row[0] for row in result.all()}
+
+
+async def record_ad_impression(db: AsyncSession, user_id: int, ad_slug: str) -> None:
+    """Record a showing. If this was the last ad in the rotation, the guided
+    tour is complete — opt the member out automatically. Re-enabling in
+    Settings calls reset_ad_progress to start them over from ad #1."""
+    seen_before = await get_seen_ad_slugs(db, user_id)
+    db.add(AdImpression(user_id=user_id, ad_slug=ad_slug))
+    if ads.next_ad_for(seen_before | {ad_slug}) is None:
+        user = await db.get(User, user_id)
+        if user is not None:
+            user.ads_opted_out = True
+    await db.commit()
+
+
+async def reset_ad_progress(db: AsyncSession, user_id: int) -> None:
+    """Clear a member's seen-ad history — used when they re-enable ads in
+    Settings, so the guided tour restarts from ad #1."""
+    await db.execute(delete(AdImpression).where(AdImpression.user_id == user_id))
+    await db.commit()
+
+
+async def recent_ad_impression_exists(db: AsyncSession, user_id: int, gap_seconds: int) -> bool:
+    """Whether this member has an impression within the last `gap_seconds`.
+
+    The cutoff comes from the database's own clock, never Python's. `shown_at`
+    is a naive DateTime filled in by `server_default=func.now()`, so the rows
+    hold whatever wall-clock the database renders — under Postgres that's the
+    session timezone (Pacific here), which disagrees with datetime.utcnow() by
+    several hours. Reading the clock back in that same rendering keeps the
+    comparison like-for-like.
+
+    Getting it back differs by dialect, which is why the expression is chosen
+    rather than shared. Under Postgres a bare now() comes through asyncpg
+    tz-aware in UTC, hours away from the naive local values in the column, so
+    it needs the cast that the write path also goes through. SQLite can't use
+    that cast at all — CAST(... AS DATETIME) hits NUMERIC affinity and returns
+    the year — but its CURRENT_TIMESTAMP is already in the column's rendering.
+
+    The subtraction then happens in Python because the interval syntax that
+    expresses it in SQL is Postgres-only, and the tests run on SQLite. One
+    extra round trip, and the query works on both.
+    """
+    if db.get_bind().dialect.name == "postgresql":
+        now_expr = cast(func.now(), DateTime)
+    else:
+        now_expr = func.now(type_=DateTime)
+    now = (await db.execute(select(now_expr))).scalar_one()
+    cutoff = now - timedelta(seconds=gap_seconds)
+    result = await db.execute(
+        select(func.count())
+        .select_from(AdImpression)
+        .where(
+            AdImpression.user_id == user_id,
+            AdImpression.shown_at >= cutoff,
+        )
+    )
+    return result.scalar_one() > 0
+
+
+async def get_pending_ad(db: AsyncSession, user: User, near_deadline: bool) -> "ads.Ad | None":
+    """The ad to show this member right now, or None if nothing is eligible."""
+    app_settings = await get_app_settings(db)
+    seen = await get_seen_ad_slugs(db, user.id)
+    unseen = ads.next_ad_for(seen)
+    recent = await recent_ad_impression_exists(db, user.id, ads.MIN_GAP_SECONDS)
+    if ads.is_eligible(
+        ads_enabled=app_settings.ads_enabled,
+        user_opted_out=user.ads_opted_out,
+        unseen_ad=unseen,
+        near_deadline=near_deadline,
+        recent_impression=recent,
+    ):
+        return unseen
+    return None

@@ -8,24 +8,59 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+SITE_NAME = "Stumbling Book Club"
+
+
+def _discord_footer() -> str:
+    """A named link to the club, as a Discord masked link.
+
+    Masked rather than a bare URL so a dozen notifications a season don't each
+    drag a link preview into the channel behind them.
+    """
+    return f"\n\n[{SITE_NAME}]({settings.site_url})"
+
+
+def _email_footer() -> str:
+    """A named link to the club, in the app's own forest palette.
+
+    Inline styles only, and a table-free single paragraph — Gmail and Outlook
+    strip <style> blocks, so anything set in a stylesheet would arrive bare.
+    """
+    return (
+        '<p style="margin:28px 0 0;padding-top:14px;border-top:1px solid #d9f0d4;'
+        'font-family:Georgia,serif;font-size:13px;color:#3d6b36;">'
+        f'<a href="{settings.site_url}" style="color:#3d6b36;">{SITE_NAME}</a>'
+        "</p>"
+    )
+
 
 async def send_discord(message: str) -> None:
-    """Post a message to the configured Discord webhook. Fails silently."""
+    """Post a message to the configured Discord webhook. Fails silently.
+
+    The club link is appended here rather than by each caller so that every
+    message carries one — there are a dozen call sites across state.py and
+    main.py, and any new one gets it for free.
+    """
     url = settings.discord_webhook_url
     if not url:
         return
     try:
         async with httpx.AsyncClient() as client:
-            await client.post(url, json={"content": message}, timeout=5)
+            await client.post(url, json={"content": message + _discord_footer()}, timeout=5)
     except Exception:
         logger.warning("Discord webhook failed", exc_info=True)
 
 
 async def send_email(to_emails: list[str], subject: str, body: str) -> None:
-    """Send one email per recipient via Resend. Fails silently per address."""
+    """Send one email per recipient via Resend. Fails silently per address.
+
+    Appends the club link for the same reason send_discord does: it belongs on
+    every email, and centralising it here is the only way to guarantee that.
+    """
     api_key = settings.resend_api_key
     if not api_key or not to_emails:
         return
+    body = body + _email_footer()
     async with httpx.AsyncClient() as client:
         for email in to_emails:
             try:

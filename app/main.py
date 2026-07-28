@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app import crud, fog, notify, seed_data, state, voting
+from app import ads, crud, fog, notify, seed_data, state, voting
 from app.auth import (
     MEMBER_VIEW_COOKIE,
     build_authorization_url,
@@ -75,6 +75,7 @@ app.add_middleware(NoCacheMiddleware)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["unescape"] = _html.unescape
+templates.env.globals["ALL_ADS"] = ads.ADS
 
 
 # ---------------------------------------------------------------------------
@@ -235,6 +236,31 @@ async def require_admin(request: Request, db: AsyncSession = Depends(get_db)) ->
     return user
 
 
+async def _near_any_deadline(db: AsyncSession) -> bool:
+    """True if the active season's current phase, or an unfinalized meetup,
+    closes within the next hour. Used to hold back THE MONK ads — see
+    monk-ads-plan.md's "never interrupt" list."""
+    now = datetime.utcnow()
+    season = await crud.get_active_season(db)
+    if season is not None and season.state != SeasonState.complete:
+        deadline = await state.get_current_deadline(db, season)
+        if deadline and now < deadline < now + ads.NEAR_DEADLINE_BUFFER:
+            return True
+    meetup = await crud.get_active_meetup_shallow(db)
+    if meetup is not None and not meetup.finalized_option_id:
+        if now < meetup.deadline < now + ads.NEAR_DEADLINE_BUFFER:
+            return True
+    return False
+
+
+async def get_pending_ad(db: AsyncSession, user: User) -> ads.Ad | None:
+    """The THE MONK ad to show this member on this page load, if any. Only wire
+    this into GET routes that are safe to interrupt — never /ranking or /bracket,
+    never a POST/form-submit flow."""
+    near_deadline = await _near_any_deadline(db)
+    return await crud.get_pending_ad(db, user, near_deadline=near_deadline)
+
+
 # ---------------------------------------------------------------------------
 # Root
 # ---------------------------------------------------------------------------
@@ -267,9 +293,13 @@ async def root(
 @app.get("/how-it-works", response_class=HTMLResponse)
 async def how_it_works(
     request: Request,
+    db: AsyncSession = Depends(get_db),
     user: User | None = Depends(get_user_or_none),
 ):
-    return templates.TemplateResponse("how_it_works.html", {"request": request, "user": user})
+    ad = await get_pending_ad(db, user) if user else None
+    return templates.TemplateResponse(
+        "how_it_works.html", {"request": request, "user": user, "ad": ad}
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +383,7 @@ async def submit_page(
     )
 
     deadline = season.submit_deadline
+    ad = await get_pending_ad(db, user)
 
     return templates.TemplateResponse(
         "submit.html",
@@ -365,6 +396,7 @@ async def submit_page(
             "all_submissions": all_submissions,
             "past_picks": past_picks,
             "is_spectator": is_spectator,
+            "ad": ad,
             "phase_deadline": deadline,
             "phase_name": "Submissions",
             "stepper_phase": "submit",
@@ -746,6 +778,8 @@ async def complete_page(
                 await crud.get_matchups_for_season(db, season.id), winner_book.id
             )
 
+    ad = await get_pending_ad(db, user)
+
     return templates.TemplateResponse(
         "complete.html",
         {
@@ -755,6 +789,7 @@ async def complete_page(
             "winner_book": winner_book,
             "champion_run": champion_run,
             "stepper_phase": "complete",
+            "ad": ad,
             **meetup_ctx,
             **progress_ctx,
             **discussion_ctx,
@@ -976,6 +1011,8 @@ async def history_page(
         avg_ratings = await crud.get_average_ratings(db)
         review_counts = await crud.get_review_counts(db)
 
+    ad = await get_pending_ad(db, user)
+
     return templates.TemplateResponse(
         "history.html",
         {
@@ -988,6 +1025,7 @@ async def history_page(
             "tab": tab,
             "submitted": submitted,
             "duplicate": duplicate,
+            "ad": ad,
         },
     )
 
@@ -1460,6 +1498,7 @@ async def admin_page(
             "default_submit_days": settings.default_submit_days,
             "default_ranking_days": settings.default_ranking_days,
             "default_bracket_round_hours": settings.default_bracket_round_hours,
+            "ads_enabled": (await crud.get_app_settings(db)).ads_enabled,
         },
     )
 
@@ -1969,6 +2008,53 @@ async def admin_backfill_covers(
     return RedirectResponse("/admin?toast=covers_filled", status_code=302)
 
 
+# ---------------------------------------------------------------------------
+# THE MONK ads
+# ---------------------------------------------------------------------------
+
+
+@app.post("/admin/ads/toggle", response_class=HTMLResponse)
+async def admin_toggle_ads(
+    db: AsyncSession = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    app_settings = await crud.get_app_settings(db)
+    await crud.set_ads_enabled(db, not app_settings.ads_enabled)
+    return RedirectResponse("/admin", status_code=302)
+
+
+@app.get("/admin/ads-preview", response_class=HTMLResponse)
+async def admin_ads_preview(
+    request: Request,
+    user: User = Depends(require_admin),
+):
+    """Every ad in rotation order, ignoring eligibility — for visual QA only."""
+    return templates.TemplateResponse(
+        "admin_ads_preview.html",
+        {"request": request, "user": user, "ads": ads.ADS},
+    )
+
+
+@app.post("/ads/{slug}/dismiss", response_class=HTMLResponse)
+async def dismiss_ad(
+    slug: str,
+    return_to: str = Form("/"),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    """Record the impression and send the member back where they were.
+
+    Only records if `slug` is actually this member's next unseen ad — a
+    tampered form can't jump the sequence or double-count someone else's ad.
+    """
+    seen = await crud.get_seen_ad_slugs(db, user.id)
+    expected = ads.next_ad_for(seen)
+    if expected is not None and expected.slug == slug:
+        await crud.record_ad_impression(db, user.id, slug)
+    safe_return = return_to if return_to.startswith("/") and not return_to.startswith("//") else "/"
+    return RedirectResponse(safe_return, status_code=302)
+
+
 @app.post("/admin/season/{season_id}/nudge", response_class=HTMLResponse)
 async def nudge_stragglers(
     season_id: int,
@@ -2148,6 +2234,7 @@ async def meetup_page(
     winner_book = None
     if meetup_ctx["meetup"]:
         winner_book = await crud.get_winner_book_for_season(db, meetup_ctx["meetup"].season_id)
+    ad = await get_pending_ad(db, user)
 
     return templates.TemplateResponse(
         "meetup.html",
@@ -2155,6 +2242,7 @@ async def meetup_page(
             "request": request,
             "user": user,
             "winner_book": winner_book,
+            "ad": ad,
             **meetup_ctx,
         },
     )
@@ -2345,12 +2433,14 @@ async def toggle_member_view(
 @app.get("/settings", response_class=HTMLResponse)
 async def settings_page(
     request: Request,
+    db: AsyncSession = Depends(get_db),
     user: User = Depends(require_user),
 ):
     saved = request.query_params.get("saved") == "1"
+    ad = await get_pending_ad(db, user)
     return templates.TemplateResponse(
         "settings.html",
-        {"request": request, "user": user, "saved": saved},
+        {"request": request, "user": user, "saved": saved, "ad": ad},
     )
 
 
@@ -2358,13 +2448,19 @@ async def settings_page(
 async def save_settings(
     display_name: str = Form(""),
     email_notifications: str = Form("off"),
+    show_ads: str = Form("off"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_user),
 ):
     db_user = await db.get(User, user.id)
     db_user.display_name = display_name.strip() or None
+    was_opted_out = db_user.ads_opted_out
+    db_user.ads_opted_out = show_ads != "on"
     db_user.email_notifications = email_notifications == "on"
     await db.commit()
+    if was_opted_out and not db_user.ads_opted_out:
+        # Re-enabling restarts the guided tour from ad #1, not wherever they left off.
+        await crud.reset_ad_progress(db, user.id)
     return RedirectResponse("/settings?saved=1", status_code=302)
 
 
@@ -2396,6 +2492,7 @@ async def ideas_page(
     ideas = await crud.get_all_ideas(db)
     upvoted_ids = await crud.get_user_upvoted_idea_ids(db, user.id)
     idea_count = await crud.get_active_idea_count_for_user(db, user.id)
+    ad = await get_pending_ad(db, user)
     return templates.TemplateResponse(
         "ideas.html",
         {
@@ -2405,6 +2502,7 @@ async def ideas_page(
             "upvoted_ids": upvoted_ids,
             "idea_count": idea_count,
             "max_ideas": 3,
+            "ad": ad,
         },
     )
 
@@ -2819,6 +2917,8 @@ async def season_recap_page(
             }
         )
 
+    ad = await get_pending_ad(db, user)
+
     return templates.TemplateResponse(
         "recap.html",
         {
@@ -2827,5 +2927,6 @@ async def season_recap_page(
             "season": season,
             "winner_book": winner_book,
             "stats": stats,
+            "ad": ad,
         },
     )

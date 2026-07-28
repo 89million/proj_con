@@ -43,6 +43,7 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
     email_notifications: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    ads_opted_out: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     @property
@@ -459,3 +460,28 @@ class DiscussionPost(Base):
     replies: Mapped[list["DiscussionPost"]] = relationship(
         "DiscussionPost", back_populates="parent", cascade="all, delete-orphan"
     )
+
+
+class AdImpression(Base):
+    """One showing of a THE MONK ad to a member. The absence of a row for an
+    ad slug is what lets a member's next ad and 7-day/30h eligibility be
+    computed directly, instead of tracked with a counter column."""
+
+    __tablename__ = "ad_impressions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    ad_slug: Mapped[str] = mapped_column(String, nullable=False)
+    shown_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    user: Mapped["User"] = relationship("User")
+
+
+class AppSetting(Base):
+    """Single-row global config, editable at runtime (unlike app/config.py env vars).
+    Currently just the admin kill switch for THE MONK ads."""
+
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ads_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")

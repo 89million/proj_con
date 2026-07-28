@@ -1,0 +1,500 @@
+{% import "partials/_macros.html" as macros %}
+<style>
+  .ad-overlay { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 24px; overflow: hidden; }
+  .ad-overlay::before { content: ""; position: absolute; inset: 0; background: rgba(0,0,0,.55);
+                         animation: ad-backdrop-in var(--ad-in-dur, 1000ms) steps(10, jump-end) forwards; }
+  .ad-frame { position: relative; z-index: 1; max-width: 420px; width: 100%; max-height: 92vh; overflow-y: auto;
+              padding: 32px 28px; text-align: center; border-radius: 4px; box-shadow: 0 20px 60px rgba(0,0,0,.4); }
+  .ad-kicker { font-size: 11px; letter-spacing: 3px; font-weight: 700; opacity: .6; margin-bottom: 4px; }
+  .ad-headline { font-family: Georgia, serif; font-weight: 800; font-size: 26px; text-transform: uppercase;
+                 letter-spacing: 1px; margin-bottom: 12px; }
+  .ad-object { width: 150px; height: 130px; margin: 0 auto 14px; }
+  .ad-object svg { width: 100%; height: 100%; display: block; }
+  .ad-body { font-size: 15px; line-height: 1.5; margin-bottom: 8px; }
+  .ad-closer { font-style: italic; font-size: 12px; opacity: .7; margin-bottom: 6px; }
+  .ad-caption { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; opacity: .55; margin-bottom: 14px; }
+  .ad-disclaimer { font-size: 8px; line-height: 1.4; opacity: .5; margin-bottom: 16px; }
+  .ad-disclaimer p { margin: 0; }
+  .ad-skip { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; opacity: .45; margin-bottom: 10px; }
+  .ad-skip-n { display: inline-block; }
+  .ad-skip-n.ad-skip-glitch { color: #c8402a; text-shadow: 2px 0 rgba(0,200,255,.6), -2px 0 rgba(255,0,140,.6);
+                               transform: skewX(-10deg) scaleY(1.15); }
+  .ad-dismiss-btn { padding: 10px 28px; border-radius: 999px; font-weight: 600; font-size: 13px; cursor: pointer;
+                     border: 2px solid currentColor; background: transparent; transition: opacity .2s; }
+  .ad-dismiss-btn:disabled { opacity: .25; cursor: not-allowed; }
+  .ad-starburst { position: absolute; top: -14px; right: -14px; width: 90px; height: 90px; opacity: .85; }
+
+  .ad-frame.ad-era-print { background: #f3ead5; background-image: radial-gradient(rgba(0,0,0,.06) 1px, transparent 1.2px);
+                            background-size: 5px 5px; color: #2a1c12; border: 1px solid #d8c8a0; }
+  .ad-frame.ad-era-print .ad-headline { text-shadow: 2px 0 rgba(0,170,220,.5), -2px 0 rgba(220,0,110,.45); }
+  .ad-frame.ad-era-print .ad-object { color: #8a2a1a; filter: drop-shadow(2px 3px 0 rgba(0,0,0,.2)); }
+  .ad-frame.ad-era-print .ad-starburst { color: #c8402a; }
+  .ad-frame.ad-era-print .ad-dismiss-btn { border-color: #8a2a1a; color: #8a2a1a; }
+  .ad-frame.ad-quiet.ad-era-print .ad-headline { text-shadow: none; }
+
+  .ad-frame.ad-era-seventies { background: linear-gradient(160deg, #f6dcb0, #eab868); color: #3a2410; border: 1px solid #d9a856; }
+  .ad-frame.ad-era-seventies .ad-object { color: #7a4a1e; filter: drop-shadow(1px 2px 0 rgba(0,0,0,.15)); }
+  .ad-frame.ad-era-seventies .ad-dismiss-btn { border-color: #7a4a1e; color: #7a4a1e; }
+
+  .ad-frame.ad-era-pharma { background: #ffffff; color: #233040; border: 1px solid #d3dbe2; }
+  .ad-frame.ad-era-pharma .ad-headline { font-size: 22px; }
+  .ad-frame.ad-era-pharma .ad-object { color: #3a5468; filter: saturate(.65) drop-shadow(0 1px 0 rgba(0,0,0,.1)); }
+  .ad-frame.ad-era-pharma .ad-dismiss-btn { border-color: #3a5468; color: #3a5468; }
+
+  .ad-frame.ad-era-corporate { background: #f3f5f7; color: #1c2430; border: 1px solid #e1e5ea; border-radius: 16px; }
+  .ad-frame.ad-era-corporate .ad-headline { font-family: -apple-system, Helvetica, Arial, sans-serif; font-weight: 800;
+                                    text-transform: none; letter-spacing: 0; font-size: 24px; }
+  .ad-frame.ad-era-corporate .ad-kicker { opacity: .4; }
+  .ad-frame.ad-era-corporate .ad-object { color: #8c96a3; filter: grayscale(1); }
+  .ad-frame.ad-era-corporate .ad-dismiss-btn { border-color: #1c2430; color: #1c2430; border-radius: 8px; }
+
+  .ad-frame.ad-era-void { background: #0a0a0a; color: #f4f4f4; box-shadow: none; border: none; }
+  .ad-frame.ad-era-void .ad-headline { font-family: -apple-system, Helvetica, Arial, sans-serif; font-weight: 300;
+                               letter-spacing: 4px; font-size: 20px; text-transform: uppercase; }
+  .ad-frame.ad-era-void .ad-kicker { opacity: .5; }
+  .ad-frame.ad-era-void .ad-dismiss-btn { border-color: #f4f4f4; color: #f4f4f4; }
+
+  /* The overlay doesn't fade in cleanly — it stutters into place. */
+  @keyframes ad-backdrop-in {
+    0%   { opacity: 0; }
+    8%   { opacity: .12; }
+    18%  { opacity: .05; }
+    32%  { opacity: .28; }
+    44%  { opacity: .15; }
+    58%  { opacity: .42; }
+    72%  { opacity: .3; }
+    88%  { opacity: .5; }
+    100% { opacity: .55; }
+  }
+
+  /* Seven bad-UI entrances. Each crawls the full width/height of the
+     screen — this is the point, not a bug — over a duration set per-show
+     by JS (3-8s). A short flicker at the very start, then a long, visible,
+     annoying crawl into place with a bit of overshoot/wobble along the way. */
+  @keyframes ad-in-top {
+    0%  { opacity: 0; transform: translateY(-140vh); }
+    4%  { opacity: .4; } 8% { opacity: 1; }
+    35% { transform: translateY(-85vh) translateX(2vw) rotate(1deg); }
+    55% { transform: translateY(-45vh) translateX(-3vw) rotate(-1deg); }
+    72% { transform: translateY(-18vh) translateX(1vw); }
+    86% { transform: translateY(-4vh); }
+    94% { transform: translateY(2vh); }
+    100% { transform: translateY(0); }
+  }
+  @keyframes ad-in-upper-right {
+    0%  { opacity: 0; transform: translate(85vw, -85vh) rotate(12deg); }
+    4%  { opacity: .4; } 8% { opacity: 1; }
+    35% { transform: translate(48vw, -46vh) rotate(6deg); }
+    55% { transform: translate(22vw, -20vh) rotate(-3deg); }
+    74% { transform: translate(6vw, -5vh) rotate(1deg); }
+    90% { transform: translate(-1vw, 1vh) rotate(0deg); }
+    100% { transform: translate(0, 0) rotate(0deg); }
+  }
+  @keyframes ad-in-left {
+    0%  { opacity: 0; transform: translateX(-140vw); }
+    4%  { opacity: .4; } 8% { opacity: 1; }
+    35% { transform: translateX(-80vw) translateY(2vh); }
+    55% { transform: translateX(-42vw) translateY(-3vh); }
+    74% { transform: translateX(-14vw); }
+    90% { transform: translateX(2vw); }
+    100% { transform: translateX(0); }
+  }
+  @keyframes ad-in-lower-left {
+    0%  { opacity: 0; transform: translate(-85vw, 85vh) rotate(-10deg); }
+    4%  { opacity: .4; } 8% { opacity: 1; }
+    35% { transform: translate(-46vw, 48vh) rotate(-5deg); }
+    55% { transform: translate(-20vw, 22vh) rotate(3deg); }
+    74% { transform: translate(-5vw, 6vh) rotate(-1deg); }
+    90% { transform: translate(1vw, -1vh); }
+    100% { transform: translate(0, 0) rotate(0deg); }
+  }
+  @keyframes ad-in-bottom {
+    0%  { opacity: 0; transform: translateY(140vh); }
+    4%  { opacity: .4; } 8% { opacity: 1; }
+    35% { transform: translateY(80vh) translateX(-2vw); }
+    55% { transform: translateY(42vh) translateX(3vw); }
+    74% { transform: translateY(14vh); }
+    90% { transform: translateY(-2vh); }
+    100% { transform: translateY(0); }
+  }
+  @keyframes ad-in-expand {
+    0%  { opacity: 0; transform: scale(.02); }
+    4%  { opacity: .5; } 8% { opacity: 1; }
+    40% { transform: scale(.3); }
+    60% { transform: scale(.6); }
+    78% { transform: scale(.92); }
+    90% { transform: scale(1.06); }
+    100% { transform: scale(1); }
+  }
+  @keyframes ad-in-spiral {
+    0%  { opacity: 0; transform: translate(55vw, 55vh) rotate(-340deg) scale(.05); }
+    4%  { opacity: .4; } 8% { opacity: 1; }
+    35% { transform: translate(30vw, 30vh) rotate(-180deg) scale(.4); }
+    55% { transform: translate(12vw, 12vh) rotate(-70deg) scale(.7); }
+    74% { transform: translate(3vw, 3vh) rotate(-15deg) scale(.9); }
+    90% { transform: translate(-1vw, -1vh) rotate(3deg) scale(1.04); }
+    100% { transform: translate(0, 0) rotate(0deg) scale(1); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .ad-overlay::before { animation: none !important; }
+    .ad-frame { animation: none !important; }
+    .ad-malfunction-msg.ad-typing::after { animation: none !important; }
+  }
+
+  @media (max-width: 600px) {
+    .ad-frame { padding: 22px 18px; }
+    .ad-object { width: 110px; height: 96px; }
+    .ad-headline { font-size: 20px; }
+  }
+
+  /* A "malfunction" — the crawl freezes mid-flight and this takes over
+     full-screen, on top of everything, for however long its clock says
+     regardless of anything anyone does. Then it's gone and the ad picks
+     its crawl back up like nothing happened. Deliberately still and flat —
+     a blue screen, not a fireworks show. The unease is the calm,
+     bureaucratic tone curdling, not motion. */
+  .ad-malfunction { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center;
+                    justify-content: center; cursor: pointer; padding: 40px; background: #14328c; }
+  .ad-malfunction[hidden] { display: none; }
+  .ad-malfunction-inner { max-width: 480px; width: 100%; text-align: left;
+                          font-family: 'SFMono-Regular', Consolas, 'Courier New', monospace; color: #fff; }
+  .ad-malfunction-face { font-size: 60px; font-weight: 400; margin: 0 0 20px; line-height: 1; }
+  .ad-malfunction-headline { font-size: 19px; line-height: 1.4; margin: 0 0 20px; }
+  .ad-malfunction-msg { font-size: 13px; line-height: 1.7; opacity: .85; min-height: 4.9em; }
+  .ad-malfunction-msg.ad-typing::after { content: '_'; animation: ad-malfunction-cursor 500ms steps(1) infinite; }
+  @keyframes ad-malfunction-cursor {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0; }
+  }
+</style>
+
+<div id="ad-overlay" class="ad-overlay" role="dialog" aria-modal="true" aria-label="Advertisement: THE MONK — {{ ad.product }}"
+     data-first-ad="{{ '1' if ad.slug == ALL_ADS[0].slug else '' }}">
+  <div id="ad-frame" class="ad-frame ad-era-{{ ad.era }}{% if ad.quiet %} ad-quiet{% endif %}" tabindex="-1">
+    {{ macros.ad_card(ad) }}
+    <form method="post" action="/ads/{{ ad.slug }}/dismiss" class="ad-dismiss-form">
+      <input type="hidden" name="return_to" value="{{ request.url.path }}" />
+      <button type="submit" id="ad-dismiss-btn" class="ad-dismiss-btn">Back to site</button>
+    </form>
+  </div>
+</div>
+<div id="ad-malfunction" class="ad-malfunction" hidden aria-hidden="true">
+  <div class="ad-malfunction-inner">
+    <p class="ad-malfunction-face">:(</p>
+    <p class="ad-malfunction-headline">THE MONK ran into a problem.</p>
+    <p id="ad-malfunction-msg" class="ad-malfunction-msg"></p>
+  </div>
+</div>
+<script>
+(function () {
+  var overlay = document.getElementById('ad-overlay');
+  if (!overlay) return;
+  var frame = document.getElementById('ad-frame');
+  var btn = document.getElementById('ad-dismiss-btn');
+  var form = overlay.querySelector('.ad-dismiss-form');
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // The very first ad a member ever sees always ends in a long blue screen
+  // when they try to leave — it's the intro to the whole bit. Every ad
+  // after that just has a 1-in-5 chance of a second, much shorter one.
+  //
+  // "First" has to survive a page load, and neither of the obvious signals
+  // does. `data-first-ad` only says "this is ad #1", which comes back around
+  // whenever reset_ad_progress runs (re-enabling ads in Settings) or when a
+  // member reloads without dismissing — and a plain script-scoped flag is
+  // reborn `false` on every load, which made *every* random malfunction take
+  // the long branch. So the fact that the long one has been spent is kept in
+  // localStorage. Per-browser rather than per-account, which is the right
+  // amount of machinery for a gag: worst case someone on a second device
+  // gets the intro twice.
+  var isFirstAd = overlay.dataset.firstAd === '1';
+  var LONG_MALFUNCTION_KEY = 'monk.longMalfunctionSeen';
+  function longMalfunctionSeen() {
+    // Private mode and blocked storage both throw rather than return null.
+    try { return window.localStorage.getItem(LONG_MALFUNCTION_KEY) === '1'; } catch (e) { return false; }
+  }
+  function markLongMalfunctionSeen() {
+    try { window.localStorage.setItem(LONG_MALFUNCTION_KEY, '1'); } catch (e) {}
+  }
+  // Owed exactly once, ever. Everything else gets the short one.
+  var longMalfunctionPending = isFirstAd && !longMalfunctionSeen();
+
+  // A blue screen: mid-crawl the entrance just freezes and this takes over
+  // full-screen, typing out one flat diagnostic line after another. The
+  // first one runs long enough to actually escalate: calm technical
+  // bureaucracy, then quietly unsettled, then openly scared — the sad face
+  // and headline never change, only what's underneath it. Every one after
+  // is short and confident, like it's seen this before. Gone again once
+  // its clock runs out regardless of anything, and the frozen entrance
+  // just resumes where it left off (or the exit that triggered it finally
+  // goes through).
+  var MALFUNCTION_CHANCE = 0.2; // 1 in 5, for every ad after the first
+  var REPEAT_MIN_DURATION = 4000;
+  var REPEAT_MAX_DURATION = 6000;
+  // A fixed, ordered arc, not a random sample from a pool — it starts calm,
+  // hits a real error, spirals into a long, genuinely panicked stretch, then
+  // snaps back to working in just a line or two. Runs to completion no
+  // matter how long that takes (~45s); nothing here races a clock that
+  // could cut it off mid-sentence. Typing itself speeds up through the
+  // panic (see `speed` below) and the resolution is deliberately abrupt.
+  function buildFirstSequence() {
+    return [
+      { text: "We're just collecting some error information, and then we'll continue.", pause: 1800 },
+      { text: 'Collecting error info: ' + Math.floor(Math.random() * 100) + '% complete', pause: 1800 },
+      { text: 'STOP CODE: MONK_NOT_RESPONDING', pause: 2000 },
+      { text: 'This is taking longer than expected.', pause: 1700 },
+      { text: 'This has not happened before.', pause: 1400 },
+      { text: 'Something might be a little borked.', pause: 1100, speed: [16, 24] },
+      { text: 'This is definitely borked.', pause: 900, speed: [14, 20] },
+      { text: "We don't know what is happening either.", pause: 850, speed: [12, 18] },
+      { text: 'Please don’t leave.', pause: 800, speed: [12, 18] },
+      { text: 'We are not going to pretend this is fine.', pause: 800, speed: [10, 16] },
+      { text: 'Nobody tell the others.', pause: 750, speed: [10, 16] },
+      { text: 'WE ARE NOT OKAY.', pause: 750, speed: [10, 15] },
+      { text: new Array(23).fill('fuck').join(' '), pause: 1300, speed: [9, 14] },
+      { text: 'Oh. There it is.', pause: 1200 },
+      { text: "We're fine now.", pause: 1800 }
+    ];
+  }
+  function buildRepeatMessagePool() {
+    return [
+      'This again. We know what to do.',
+      'Same as last time. One moment.',
+      "We've seen this before. Almost done.",
+      'No need to worry. This part is routine now.',
+      'Nearly finished.',
+      'This resolves itself quickly now.'
+    ];
+  }
+  var malfunctionEl = document.getElementById('ad-malfunction');
+  var malfunctionMsgEl = document.getElementById('ad-malfunction-msg');
+  var malfunctionScheduleTimer = null;
+  var malfunctionHideTimer = null;
+  var typeTimer = null;
+  var messageCycleTimer = null;
+  var malfunctionActive = false;
+  var malfunctionIsRepeat = false;
+  var lastMessage = '';
+  var firstSequence = [];
+  var firstSequenceIndex = 0;
+
+  function typeMessage(text, onDone, speed) {
+    clearTimeout(typeTimer);
+    malfunctionMsgEl.textContent = '';
+    malfunctionMsgEl.classList.add('ad-typing');
+    var lo = speed ? speed[0] : 22;
+    var hi = speed ? speed[1] : 32;
+    var i = 0;
+    (function step() {
+      if (i >= text.length) {
+        malfunctionMsgEl.classList.remove('ad-typing');
+        if (onDone) onDone();
+        return;
+      }
+      malfunctionMsgEl.textContent += text.charAt(i);
+      i++;
+      typeTimer = setTimeout(step, lo + Math.random() * (hi - lo));
+    })();
+  }
+
+  function showNextMessage() {
+    if (malfunctionIsRepeat) {
+      var pool = buildRepeatMessagePool().filter(function (m) { return m !== lastMessage; });
+      var msg = pool[Math.floor(Math.random() * pool.length)];
+      lastMessage = msg;
+      typeMessage(msg, function () {
+        clearTimeout(messageCycleTimer);
+        messageCycleTimer = setTimeout(showNextMessage, 1200 + Math.random() * 900);
+      });
+      return;
+    }
+    // First time: walk the fixed arc start to finish, then actually end —
+    // nothing races a clock here, it just runs until the sequence is done.
+    if (firstSequenceIndex >= firstSequence.length) {
+      messageCycleTimer = setTimeout(hideMalfunction, 900);
+      return;
+    }
+    var step = firstSequence[firstSequenceIndex++];
+    typeMessage(step.text, function () {
+      clearTimeout(messageCycleTimer);
+      messageCycleTimer = setTimeout(showNextMessage, step.pause);
+    }, step.speed);
+  }
+
+  var malfunctionOnHide = null;
+  function hideMalfunction() {
+    malfunctionActive = false;
+    malfunctionEl.hidden = true;
+    clearTimeout(typeTimer);
+    clearTimeout(messageCycleTimer);
+    clearTimeout(malfunctionHideTimer);
+    if (frame.style.animationPlayState === 'paused') frame.style.animationPlayState = 'running';
+    syncDismissButtonState();
+    var cb = malfunctionOnHide;
+    malfunctionOnHide = null;
+    if (cb) cb();
+  }
+
+  // `onHide`, when given, runs once the malfunction clears — this is how
+  // clicking "Back to site" can get waylaid: the exit doesn't happen until
+  // this fake crisis is over. `forceFirst` is passed by exactly one caller,
+  // the first ad's guaranteed long blue screen; every other trigger is a
+  // random one and is always short. Which branch runs is decided by the
+  // caller alone, so a fresh page load can't accidentally re-arm the long one.
+  function triggerMalfunction(onHide, forceFirst) {
+    malfunctionActive = true;
+    malfunctionIsRepeat = !forceFirst;
+    if (forceFirst) {
+      markLongMalfunctionSeen();
+      longMalfunctionPending = false;
+    }
+    malfunctionOnHide = onHide || null;
+    lastMessage = '';
+    malfunctionEl.hidden = false;
+    frame.style.animationPlayState = 'paused';
+    syncDismissButtonState();
+    clearTimeout(malfunctionHideTimer);
+    if (malfunctionIsRepeat) {
+      var duration = REPEAT_MIN_DURATION + Math.floor(Math.random() * (REPEAT_MAX_DURATION - REPEAT_MIN_DURATION));
+      malfunctionHideTimer = setTimeout(hideMalfunction, duration);
+    } else {
+      // Duration isn't picked up front — it's just how long this sequence
+      // takes to type and read, then showNextMessage calls hideMalfunction.
+      firstSequence = buildFirstSequence();
+      firstSequenceIndex = 0;
+    }
+    showNextMessage();
+  }
+
+  // A tap doesn't do anything to the clock — it just jumps straight to the
+  // next line, so it still feels like it's reacting to you.
+  malfunctionEl.addEventListener('click', function () {
+    clearTimeout(messageCycleTimer);
+    showNextMessage();
+  });
+
+  // The card doesn't just appear — it crawls in from a random direction
+  // (or expands from nothing, or spirals in) over 3-8 seconds, a different
+  // bad entrance every time. Purely decorative; it never blocks anything
+  // (except on the rare show where the malfunction panel above takes over).
+  var ENTRANCES = ['ad-in-top', 'ad-in-upper-right', 'ad-in-left', 'ad-in-lower-left', 'ad-in-bottom', 'ad-in-expand', 'ad-in-spiral'];
+  function playEntrance() {
+    clearTimeout(malfunctionScheduleTimer);
+    clearTimeout(malfunctionHideTimer);
+    hideMalfunction();
+    if (reduceMotion) { frame.style.animation = 'none'; return; }
+    var name = ENTRANCES[Math.floor(Math.random() * ENTRANCES.length)];
+    var duration = 3000 + Math.floor(Math.random() * 5000); // 3-8s
+    var steps = 14 + Math.floor(Math.random() * 16); // 14-29 stutter steps
+    overlay.style.setProperty('--ad-in-dur', duration + 'ms');
+    frame.style.animation = 'none';
+    void frame.offsetWidth; // reflow so the animation restarts every show
+    frame.style.animation = name + ' ' + duration + 'ms steps(' + steps + ', jump-end) forwards';
+
+    // The first ad already gets its own guaranteed blue screen on exit —
+    // don't double up with a random one during the same crawl. Gated on the
+    // long one still being owed, not on this being ad #1, so a member who
+    // lands back on ad #1 after a reset still gets normal random behaviour.
+    if (!longMalfunctionPending && Math.random() < MALFUNCTION_CHANCE) {
+      var breakAt = duration * (0.3 + Math.random() * 0.4); // 30%-70% through the crawl
+      malfunctionScheduleTimer = setTimeout(function () { triggerMalfunction(); }, breakAt);
+    }
+  }
+
+  // The real exit is genuinely disabled for 4 seconds, on a fixed clock that
+  // has no relationship at all to whatever the skip countdown is doing.
+  var dismissTimer = null;
+  var dismissLocked = false;
+  function syncDismissButtonState() {
+    btn.disabled = dismissLocked || malfunctionActive;
+  }
+  function lockDismiss() {
+    dismissLocked = true;
+    syncDismissButtonState();
+    if (dismissTimer) clearTimeout(dismissTimer);
+    dismissTimer = setTimeout(function () {
+      dismissLocked = false;
+      syncDismissButtonState();
+      if (!btn.disabled) btn.focus();
+    }, 4000);
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !dismissLocked && !malfunctionActive) form.requestSubmit();
+  });
+
+  // Trying to leave the very first ad always triggers the long blue screen
+  // once. The real exit only happens once that's over.
+  var bypassMalfunctionCheck = false;
+  form.addEventListener('submit', function (e) {
+    if (bypassMalfunctionCheck) {
+      bypassMalfunctionCheck = false;
+      return;
+    }
+    if (malfunctionActive) {
+      e.preventDefault();
+      return;
+    }
+    if (longMalfunctionPending) {
+      e.preventDefault();
+      triggerMalfunction(function () {
+        bypassMalfunctionCheck = true;
+        form.requestSubmit();
+      }, true);
+    }
+  });
+
+  // One continuous stream, not two clean phases: 5, 4, 3 always land first
+  // so it reads as a real timer, then it's a mix of random glitch frames
+  // with the real next digit (2, then 1) still occasionally poking through
+  // — increasingly rare the closer it gets. It never reaches 1 and stops;
+  // it just quietly restarts at 5 and does the whole thing again.
+  var skipTimer = null;
+  function startSkipTimer() {
+    if (skipTimer) clearInterval(skipTimer);
+    var skipEl = frame.querySelector('.ad-skip-n');
+    if (!skipEl) return;
+    var LEGIT = [5, 4, 3, 2, 1];
+    var CHAOS = ['∞', '░▒▓', '¿?', '—', '※', '◆◆', '···', '‽', '⚠', '∴', '≈', '§', '¡', '∅', '†', 4, 7, 2, 4];
+    var legitIndex = 0;
+    skipTimer = setInterval(function () {
+      var forceLegit = legitIndex < 3; // 5, 4, 3 always show cleanly first
+      var glitchChance = forceLegit ? 0 : Math.min(0.75, 0.35 + (legitIndex - 3) * 0.2);
+      var value;
+      if (!forceLegit && Math.random() < glitchChance) {
+        value = CHAOS[Math.floor(Math.random() * CHAOS.length)];
+      } else {
+        value = LEGIT[legitIndex];
+        legitIndex++;
+        if (legitIndex >= LEGIT.length) legitIndex = 0;
+      }
+      skipEl.textContent = value;
+      skipEl.classList.toggle('ad-skip-glitch', !/^\d+$/.test(String(value)));
+    }, 900);
+  }
+
+  // The 4-second dismiss lock doesn't start until the ad has actually
+  // finished crawling into place — not from the moment it starts loading.
+  function lockAfterEntrance() {
+    if (reduceMotion) {
+      lockDismiss(); // nothing to crawl in, so there's nothing to wait for
+      return;
+    }
+    var onEnd = function (e) {
+      if (e.target !== frame) return;
+      frame.removeEventListener('animationend', onEnd);
+      lockDismiss();
+    };
+    frame.addEventListener('animationend', onEnd);
+  }
+
+  // Locked immediately and stays locked straight through the crawl — the
+  // visible 4-second window only starts counting once it lands.
+  frame.focus();
+  startSkipTimer();
+  dismissLocked = true;
+  syncDismissButtonState();
+  playEntrance();
+  lockAfterEntrance();
+})();
+</script>

@@ -11,3 +11,29 @@
   </div>
   {% endif %}
 {% endmacro %}
+
+{# The card content for a THE MONK ad — reused by the live interstitial overlay
+   and the admin gallery that shows every ad at once for review. #}
+{% macro ad_card(ad) %}
+  {% if ad.starburst %}
+  <div class="ad-starburst" aria-hidden="true">
+    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="50,0 61,38 100,38 68,61 79,100 50,76 21,100 32,61 0,38 39,38" fill="currentColor"/>
+    </svg>
+  </div>
+  {% endif %}
+  <p class="ad-kicker">THE MONK</p>
+  <h2 class="ad-headline">{{ ad.product }}</h2>
+  {% if ad.svg %}
+  <div class="ad-object" aria-hidden="true">{{ ad.svg|safe }}</div>
+  {% endif %}
+  <p class="ad-body">{{ ad.body }}</p>
+  <p class="ad-closer">{{ ad.closer }}</p>
+  {% if ad.caption %}<p class="ad-caption">{{ ad.caption }}</p>{% endif %}
+  {% if ad.filler %}
+  <div class="ad-disclaimer">
+    {% for line in ad.filler %}<p>{{ line }}</p>{% endfor %}
+  </div>
+  {% endif %}
+  <p class="ad-skip" aria-hidden="true">Skip in <span class="ad-skip-n">5</span>&hellip;</p>
+{% endmacro %}
