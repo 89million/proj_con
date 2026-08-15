@@ -37,7 +37,7 @@
         {{ meetup.finalized_option.event_datetime | localdt('%A, %b %d') }}
       </p>
       <p class="text-forest-600 text-lg">
-        {{ meetup.finalized_option.event_datetime | localdt('%-I:%M %p') }}
+        {{ meetup.finalized_option.event_datetime | localtz('%-I:%M %p') }}
       </p>
       <p class="text-forest-500 mt-2">{{ meetup.finalized_option.location }}</p>
       <a href="/meetup/calendar.ics"
@@ -275,7 +275,7 @@
           <div class="flex items-center justify-between">
             <div>
               <p class="font-semibold text-forest-800">
-                {{ option.event_datetime | localdt('%A, %b %d at %-I:%M %p') }}
+                {{ option.event_datetime | localtz('%A, %b %d at %-I:%M %p') }}
               </p>
               <p class="text-forest-600">{{ option.location }}</p>
               <p class="text-forest-400 text-xs mt-1">Proposed by {{ option.proposer.visible_name }}</p>
@@ -344,7 +344,7 @@
                     class="border border-forest-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-forest-400 text-forest-900">
               {% for option in sorted_options %}
                 <option value="{{ option.id }}">
-                  {{ option.event_datetime | localdt('%b %d %-I:%M %p') }} @ {{ option.location }} ({{ option.votes | length }} votes)
+                  {{ option.event_datetime | localtz('%b %d %-I:%M %p') }} @ {{ option.location }} ({{ option.votes | length }} votes)
                 </option>
               {% endfor %}
             </select>

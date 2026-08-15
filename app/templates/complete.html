@@ -116,6 +116,16 @@
   // No confetti replay when bouncing back from a meetup vote/RSVP.
   if (reduceMotion || window.location.hash || typeof confetti !== 'function') return;
 
+  // The reveal lands once per season, not on every visit to this page.
+  // Stored per season so next season's winner still gets its moment.
+  const seenKey = 'confetti-season-{{ season.id }}';
+  try {
+    if (localStorage.getItem(seenKey)) return;
+    localStorage.setItem(seenKey, '1');
+  } catch (e) {
+    // Private browsing or storage disabled — fall through and celebrate.
+  }
+
   // Forest + sound brand colors
   const colors = ['#337a2b', '#75bc6a', '#c42e5d', '#ea87a4', '#d9f0d4'];
 
