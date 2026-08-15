@@ -21,7 +21,23 @@ class Settings(BaseSettings):
     discord_webhook_url: str = ""
     resend_api_key: str = ""
     resend_from_email: str = "thehereandnow@stumblingbookclub.com"
-    meetup_deadline_weeks: int = 2
+    # Wall-clock timezone the club actually meets in. Everything is stored as
+    # naive UTC and rendered through app.clock — this is the only place the
+    # offset is declared.
+    club_timezone: str = "America/Los_Angeles"
+    # Weeks from "season complete" to the meetup itself — i.e. how long members
+    # get to read the winning book. The poll deadline is derived from this
+    # rather than the other way around, so the gap between the vote closing and
+    # the meeting is deliberate instead of whatever the calendar leaves over.
+    meetup_reading_weeks: int = 4
+    # How long the scheduling poll stays open, starting when the season closes.
+    meetup_poll_days: int = 7
+    # Never let the poll close closer than this to the earliest proposed date;
+    # a backstop for odd combinations of the two settings above.
+    meetup_min_buffer_days: int = 3
+    # How many candidate dates to seed, one week apart, from the first eligible
+    # meetup_default_day. Each is seeded at each default location.
+    meetup_date_options: int = 3
     meetup_default_locations: str = "Monk,Mixed session"
     meetup_default_day: str = "friday"
     meetup_default_time: str = "19:00"

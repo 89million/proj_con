@@ -144,6 +144,44 @@ async def send_urgent_reminder(
     await notify_all(emails, discord_msg, email_subject, email_body)
 
 
+async def send_meetup_reminder(
+    emails: list[str],
+    season_name: str,
+    when_str: str,
+    location: str,
+    app_url: str,
+) -> None:
+    """Remind the club 24 hours before the meetup itself."""
+    discord_msg = (
+        f"📚 **{season_name}** — we meet **tomorrow**, {when_str} at {location}. "
+        f"See you there! {app_url}/meetup"
+    )
+    email_subject = f"{season_name} — book club is tomorrow"
+    email_body = (
+        f"<h2>Book club is tomorrow</h2>"
+        f"<p><strong>{when_str}</strong> at {location}.</p>"
+        f'<p><a href="{app_url}/meetup">Check the details or update your RSVP →</a></p>'
+    )
+    await notify_all(emails, discord_msg, email_subject, email_body)
+
+
+async def send_meetup_stalled(emails: list[str], app_url: str) -> None:
+    """Warn that the poll closed with nothing that could be finalized."""
+    discord_msg = (
+        f"⚠️ The meetup poll closed, but there's nothing left to schedule — "
+        f"every proposed date has already passed. "
+        f"An admin needs to reopen it with new dates: {app_url}/meetup"
+    )
+    email_subject = "Meetup poll needs attention"
+    email_body = (
+        f"<h2>The meetup poll closed without a date</h2>"
+        f"<p>Every option on the poll has already passed, so nothing could be "
+        f"picked automatically.</p>"
+        f'<p><a href="{app_url}/meetup">Reopen the poll with new dates →</a></p>'
+    )
+    await notify_all(emails, discord_msg, email_subject, email_body)
+
+
 async def send_nudge(
     straggler_names: list[str],
     straggler_emails: list[str],

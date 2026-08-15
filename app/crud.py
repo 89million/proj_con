@@ -1251,6 +1251,12 @@ async def is_meetup_option_votable(db: AsyncSession, option_id: int) -> bool:
     """Check if option belongs to an active, open, non-finalized meetup.
 
     Pure scalar query — loads no ORM objects into the session.
+
+    The deadline comparison uses Python's clock, not the database's. `deadline`
+    is naive UTC written by `datetime.utcnow()`, but Postgres `now()` comes
+    back tz-aware, so comparing the two made the server coerce the column using
+    the session timezone — leaving voting open for hours after the poll had
+    closed everywhere else in the app.
     """
     result = await db.execute(
         select(func.count())
@@ -1261,7 +1267,7 @@ async def is_meetup_option_votable(db: AsyncSession, option_id: int) -> bool:
             MeetupOption.id == option_id,
             Season.state == SeasonState.complete,
             Meetup.finalized_option_id.is_(None),
-            Meetup.deadline > func.now(),
+            Meetup.deadline > datetime.utcnow(),
         )
     )
     return result.scalar_one() > 0
@@ -1333,19 +1339,47 @@ async def toggle_meetup_vote(db: AsyncSession, option_id: int, user_id: int) -> 
     return True
 
 
-async def finalize_meetup(db: AsyncSession, meetup: Meetup) -> MeetupOption | None:
-    """Finalize by picking top-voted option (ties: earliest created_at)."""
+async def finalize_meetup(
+    db: AsyncSession, meetup: Meetup, now: datetime | None = None
+) -> MeetupOption | None:
+    """Finalize the poll. Returns the winning option, or None if none is possible.
+
+    Most votes wins; ties break toward the earlier *meeting date* rather than
+    the earlier row, because ties used to hand it to whichever option was
+    seeded first purely by insertion order.
+
+    With no votes at all the poll used to return None forever — and since
+    voting closes at the deadline, that left the meetup permanently stuck with
+    no way for anyone to rescue it. Now it falls back to the earliest option
+    that hasn't already gone by. Only a poll with nothing still in the future
+    returns None, and the caller warns the club about that one.
+    """
+    now = now or datetime.utcnow()
     if not meetup.options:
         return None
-    best = max(
-        meetup.options,
-        key=lambda o: (len(o.votes), -o.created_at.timestamp()),
-    )
-    if not best.votes:
-        return None
+
+    voted = [o for o in meetup.options if o.votes]
+    if voted:
+        best = max(voted, key=lambda o: (len(o.votes), -o.event_datetime.timestamp()))
+    else:
+        upcoming = [o for o in meetup.options if o.event_datetime > now]
+        if not upcoming:
+            return None
+        best = min(upcoming, key=lambda o: o.event_datetime)
+
     meetup.finalized_option_id = best.id
     await db.commit()
     return best
+
+
+async def get_finalized_option(db: AsyncSession, meetup: Meetup) -> MeetupOption | None:
+    """The chosen option for a finalized meetup, loaded on its own."""
+    if not meetup.finalized_option_id:
+        return None
+    result = await db.execute(
+        select(MeetupOption).where(MeetupOption.id == meetup.finalized_option_id)
+    )
+    return result.scalar_one_or_none()
 
 
 async def admin_finalize_meetup(db: AsyncSession, meetup: Meetup, option_id: int) -> None:

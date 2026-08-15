@@ -315,8 +315,14 @@ class Meetup(Base):
     season_id: Mapped[int] = mapped_column(ForeignKey("seasons.id"), unique=True, nullable=False)
     deadline: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     finalized_option_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The two below are about the *poll* closing; event_reminder_sent is about
+    # the meetup itself, 24h out.
     reminder_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     reminder_1h_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    event_reminder_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # Set once the club has been told the poll expired with nothing to finalize,
+    # so the warning goes out exactly once rather than on every check.
+    stalled_notice_sent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     season: Mapped["Season"] = relationship("Season")

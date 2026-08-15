@@ -163,8 +163,7 @@ async def test_add_option(engine, db, test_user, complete_season_with_meetup):
         resp = await client.post(
             "/meetup/option",
             data={
-                "event_month": str(future.month),
-                "event_day": str(future.day),
+                "event_date": future.strftime("%Y-%m-%d"),
                 "event_time": "18:30",
                 "location": "The Library",
             },
@@ -189,8 +188,7 @@ async def test_add_option_blocked_after_finalization(
         resp = await client.post(
             "/meetup/option",
             data={
-                "event_month": str(future.month),
-                "event_day": str(future.day),
+                "event_date": future.strftime("%Y-%m-%d"),
                 "event_time": "19:00",
                 "location": "New Place",
             },
@@ -461,6 +459,139 @@ async def test_reactive_finalization_on_page_load(
         resp = await client.get("/meetup")
     assert "Meetup Scheduled!" in resp.text
     assert "Monk" in resp.text  # opt1 (Monk) had more votes
+
+
+async def test_zero_vote_poll_falls_back_instead_of_deadlocking(
+    engine, db, test_user, complete_season_with_meetup
+):
+    """A poll nobody voted in used to stick forever — voting closes at the
+    deadline, so there was no way back. Now it takes the earliest date left."""
+    _, meetup, opt1, opt2 = complete_season_with_meetup
+    # opt2 is sooner; neither has a single vote.
+    opt1.event_datetime = datetime.utcnow() + timedelta(weeks=5)
+    opt2.event_datetime = datetime.utcnow() + timedelta(weeks=3)
+    meetup.deadline = datetime.utcnow() - timedelta(hours=1)
+    await db.commit()
+
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/meetup")
+    assert "Meetup Scheduled!" in resp.text
+    assert "Mixed session" in resp.text  # opt2, the earliest still upcoming
+
+    await db.refresh(meetup)
+    assert meetup.finalized_option_id == opt2.id
+
+
+async def test_zero_vote_poll_with_only_past_dates_warns_once(
+    engine, db, test_user, complete_season_with_meetup
+):
+    """Nothing left to schedule: warn the club, and only once."""
+    _, meetup, opt1, opt2 = complete_season_with_meetup
+    opt1.event_datetime = datetime.utcnow() - timedelta(days=2)
+    opt2.event_datetime = datetime.utcnow() - timedelta(days=1)
+    meetup.deadline = datetime.utcnow() - timedelta(hours=1)
+    await db.commit()
+
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/meetup")
+    assert "Meetup Scheduled!" not in resp.text
+
+    await db.refresh(meetup)
+    assert meetup.finalized_option_id is None
+    assert meetup.stalled_notice_sent is True
+
+    # A second page load must not re-send the warning.
+    meetup.stalled_notice_sent = False
+    await db.commit()
+    async with make_client(engine, test_user) as client:
+        await client.get("/meetup")
+    await db.refresh(meetup)
+    assert meetup.stalled_notice_sent is True
+
+
+async def test_vote_tie_breaks_toward_the_earlier_meeting_date(
+    engine, db, test_user, test_admin, complete_season_with_meetup
+):
+    """Ties used to go to whichever option was seeded first, which was always
+    an auto-generated one. Now the sooner date wins."""
+    _, meetup, opt1, opt2 = complete_season_with_meetup
+    opt1.event_datetime = datetime.utcnow() + timedelta(weeks=5)
+    opt2.event_datetime = datetime.utcnow() + timedelta(weeks=3)
+    db.add(MeetupVote(option_id=opt1.id, user_id=test_user.id))
+    db.add(MeetupVote(option_id=opt2.id, user_id=test_admin.id))
+    meetup.deadline = datetime.utcnow() - timedelta(hours=1)
+    await db.commit()
+
+    async with make_client(engine, test_user) as client:
+        await client.get("/meetup")
+
+    await db.refresh(meetup)
+    assert meetup.finalized_option_id == opt2.id
+
+
+async def test_option_dated_before_the_deadline_is_rejected(
+    engine, db, test_user, complete_season_with_meetup
+):
+    """A date inside the voting window could win and then already be past."""
+    _, meetup, _, _ = complete_season_with_meetup
+    too_soon = meetup.deadline - timedelta(days=1)
+    async with make_client(engine, test_user) as client:
+        resp = await client.post(
+            "/meetup/option",
+            data={
+                "event_date": too_soon.strftime("%Y-%m-%d"),
+                "event_time": "19:00",
+                "location": "Too Soon Cafe",
+            },
+        )
+    assert resp.status_code == 302
+    assert "meetup_err=tooearly" in resp.headers["location"]
+
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/meetup")
+    assert "Too Soon Cafe" not in resp.text
+
+
+async def test_impossible_date_reports_an_error(engine, test_user, complete_season_with_meetup):
+    """Feb 31 used to redirect silently, so the form looked like it did nothing."""
+    async with make_client(engine, test_user) as client:
+        resp = await client.post(
+            "/meetup/option",
+            data={"event_date": "2027-02-31", "event_time": "19:00", "location": "Nowhere"},
+        )
+    assert resp.status_code == 302
+    assert "meetup_err=baddate" in resp.headers["location"]
+
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/meetup?meetup_err=baddate")
+    assert "doesn&#39;t exist" in resp.text or "doesn't exist" in resp.text
+
+
+async def test_countdown_deadline_is_utc_marked(engine, test_user, complete_season_with_meetup):
+    """Without the Z the browser reads the timestamp as local and the countdown
+    is wrong by the viewer's offset."""
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/meetup")
+    match = re.search(r'data-deadline="([^"]+)"', resp.text)
+    assert match, "countdown element missing"
+    assert match.group(1).endswith("Z")
+
+
+async def test_ics_download_for_finalized_meetup(engine, test_user, finalized_meetup):
+    """The calendar file carries UTC stamps so clients localise them correctly."""
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/meetup/calendar.ics")
+    assert resp.status_code == 200
+    assert "text/calendar" in resp.headers["content-type"]
+    assert "BEGIN:VEVENT" in resp.text
+    assert re.search(r"DTSTART:\d{8}T\d{6}Z", resp.text)
+    assert "END:VCALENDAR" in resp.text
+
+
+async def test_ics_unavailable_before_finalization(engine, test_user, complete_season_with_meetup):
+    async with make_client(engine, test_user) as client:
+        resp = await client.get("/meetup/calendar.ics", follow_redirects=False)
+    assert resp.status_code == 302
 
 
 async def test_finalized_meetup_hides_option_tallies(

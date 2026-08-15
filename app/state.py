@@ -4,9 +4,9 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import crud, notify, voting
+from app import clock, crud, notify, voting
 from app.config import settings
-from app.models import ReadBook, Season, SeasonState
+from app.models import Meetup, ReadBook, Season, SeasonState
 
 # Day-of-week name → weekday int (Monday=0)
 _WEEKDAY_MAP = {
@@ -21,17 +21,65 @@ _WEEKDAY_MAP = {
 
 
 def _next_weekday_at(after: datetime, day: str, time_str: str) -> datetime:
-    """Find the first occurrence of `day` at `time_str` on or after `after`."""
+    """First occurrence of `day` at `time_str` on or after `after`, all local.
+
+    Both argument and result are naive *club-local* wall-clock, because "Friday
+    at 7pm" is a statement about the club's calendar, not about UTC. Callers
+    convert to UTC on the way to the database.
+    """
     target_wd = _WEEKDAY_MAP.get(day.lower(), 4)  # default Friday
     hour, minute = (int(x) for x in time_str.split(":"))
-    current_wd = after.weekday()
-    days_ahead = (target_wd - current_wd) % 7
-    if days_ahead == 0 and after.hour >= hour:
+    target = after.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    days_ahead = (target_wd - after.weekday()) % 7
+    # Landing on the right weekday but past the hour means we want next week's.
+    if days_ahead == 0 and target <= after:
         days_ahead = 7
-    result = after.replace(hour=hour, minute=minute, second=0, microsecond=0) + timedelta(
-        days=days_ahead
+    return target + timedelta(days=days_ahead)
+
+
+def plan_meetup_schedule(now_utc: datetime) -> tuple[datetime, list[datetime]]:
+    """Work out when the poll closes and which dates it offers. All UTC.
+
+    Driven by the reading window rather than the poll length: pick the meeting
+    dates first (far enough out that people can finish the book), then close
+    the poll well before the earliest of them. The old order — deadline first,
+    meeting on whatever weekday followed — left a gap of anywhere from one to
+    seven days purely by accident of which day the deadline landed on.
+    """
+    local_now = clock.to_local(now_utc).replace(tzinfo=None)
+
+    first = _next_weekday_at(
+        local_now + timedelta(weeks=settings.meetup_reading_weeks),
+        settings.meetup_default_day,
+        settings.meetup_default_time,
     )
-    return result
+    count = max(1, settings.meetup_date_options)
+    candidates = [first + timedelta(weeks=i) for i in range(count)]
+
+    deadline = local_now + timedelta(days=settings.meetup_poll_days)
+    # Backstop: however the settings are tuned, never close the poll so late
+    # that the winning date is already upon us.
+    latest_close = first - timedelta(days=settings.meetup_min_buffer_days)
+    if deadline > latest_close:
+        deadline = latest_close
+
+    return clock.to_utc(deadline), [clock.to_utc(c) for c in candidates]
+
+
+async def create_meetup_with_defaults(db: AsyncSession, season_id: int, admin_id: int) -> "Meetup":
+    """Create the poll and seed it with candidate date × location options.
+
+    Shared by the automatic path (a season completing) and the admin's manual
+    "create meetup" button, which had drifted into two copies of this.
+    """
+    deadline, candidates = plan_meetup_schedule(datetime.utcnow())
+    meetup = await crud.create_meetup(db, season_id, deadline)
+
+    locations = [loc.strip() for loc in settings.meetup_default_locations.split(",") if loc.strip()]
+    for event_dt in candidates:
+        for loc in locations:
+            await crud.create_meetup_option(db, meetup.id, admin_id, event_dt, loc)
+    return meetup
 
 
 async def _participant_emails(db: AsyncSession, season_id: int) -> list[str]:
@@ -232,19 +280,8 @@ async def maybe_advance_bracket_round(
         )
         db.add(rb)
         await crud.set_season_state(db, season, SeasonState.complete)
-        # Auto-create meetup poll
-        deadline = datetime.utcnow() + timedelta(weeks=settings.meetup_deadline_weeks)
-        meetup = await crud.create_meetup(db, season.id, deadline)
-
-        # Seed with default location options
-        if settings.meetup_default_locations.strip():
-            event_dt = _next_weekday_at(
-                deadline, settings.meetup_default_day, settings.meetup_default_time
-            )
-            for loc in settings.meetup_default_locations.split(","):
-                loc = loc.strip()
-                if loc:
-                    await crud.create_meetup_option(db, meetup.id, admin.id, event_dt, loc)
+        # Auto-create meetup poll, seeded with candidate dates and locations
+        await create_meetup_with_defaults(db, season.id, admin.id)
 
         await notify.notify_all(
             emails=emails,
@@ -419,7 +456,7 @@ async def check_meetup_24h_reminder(db: AsyncSession, meetup: "Meetup") -> None:
         emails,
         season_name,
         "Meetup voting",
-        meetup.deadline.strftime("%a %b %d at %H:%M UTC"),
+        clock.format_local_tz(meetup.deadline),
         settings.site_url,
     )
     meetup.reminder_sent = True
@@ -506,11 +543,83 @@ async def check_meetup_1h_reminder(db: AsyncSession, meetup: "Meetup") -> None: 
         emails,
         season_name,
         "Meetup voting",
-        meetup.deadline.strftime("%a %b %d at %H:%M UTC"),
+        clock.format_local_tz(meetup.deadline),
         settings.site_url,
     )
     meetup.reminder_1h_sent = True
     await db.commit()
+
+
+async def check_meetup_event_reminder(db: AsyncSession, meetup: Meetup) -> None:
+    """Remind everyone 24 hours before the meetup itself.
+
+    Distinct from the two poll reminders above, which fire before *voting*
+    closes. Between the poll closing and the meeting there was previously no
+    contact at all — members RSVP'd weeks out and then heard nothing.
+    """
+    now = datetime.utcnow()
+    option = await crud.get_finalized_option(db, meetup)
+    if option is None or meetup.event_reminder_sent:
+        return
+    if not (timedelta(0) < option.event_datetime - now <= timedelta(hours=24)):
+        return
+
+    # Everyone except the people who already said they can't make it.
+    participants = await crud.get_participants_for_season(db, meetup.season_id)
+    rsvps = await crud.get_rsvps_for_meetup(db, meetup.id)
+    declined = {r.user_id for r in rsvps if r.status == "not_attending"}
+    emails = [
+        u.email for u in participants if u.id not in declined and u.email and u.email_notifications
+    ]
+
+    when = clock.format_local_tz(option.event_datetime)
+    season = await crud.get_season_by_id(db, meetup.season_id)
+    season_name = season.name if season else "Book club"
+    await notify.send_meetup_reminder(emails, season_name, when, option.location, settings.site_url)
+    meetup.event_reminder_sent = True
+    await db.commit()
+
+
+async def check_meetup_finalization(db: AsyncSession, meetup: Meetup) -> bool:
+    """Close an expired poll without waiting for someone to load the page.
+
+    Returns True if the meetup was finalized. When nothing can be finalized —
+    no options at all, or only options whose dates have already gone by — the
+    poll used to sit expired and unfinalizable forever, silently retrying on
+    every page view, with nobody told. Now the club hears about it once.
+    """
+    now = datetime.utcnow()
+    if meetup.finalized_option_id or now <= meetup.deadline:
+        return False
+
+    winner = await crud.finalize_meetup(db, meetup, now)
+    if winner:
+        await announce_meetup(db, meetup, winner)
+        return True
+
+    if not meetup.stalled_notice_sent:
+        emails = await _participant_emails(db, meetup.season_id)
+        await notify.send_meetup_stalled(emails, settings.site_url)
+        meetup.stalled_notice_sent = True
+        await db.commit()
+    return False
+
+
+async def announce_meetup(db: AsyncSession, meetup: Meetup, option) -> None:
+    """Tell the club the meetup is settled. Shared by all three finalize paths."""
+    when = clock.format_local_tz(option.event_datetime)
+    emails = await _participant_emails(db, meetup.season_id)
+    url = settings.site_url
+    await notify.notify_all(
+        emails=emails,
+        discord_msg=f"📅 Meetup decided! {when} at {option.location} — {url}/meetup",
+        email_subject="Meetup time is set!",
+        email_body=(
+            f"<h2>We're meeting up!</h2>"
+            f"<p>{when} at {option.location}</p>"
+            f'<p><a href="{url}/meetup">RSVP and add it to your calendar →</a></p>'
+        ),
+    )
 
 
 async def check_deadline_and_advance(db: AsyncSession, season: Season) -> bool:

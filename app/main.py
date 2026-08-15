@@ -9,14 +9,14 @@ from datetime import datetime, timedelta
 
 import httpx
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app import ads, crud, fog, notify, seed_data, state, voting
+from app import ads, clock, crud, fog, notify, seed_data, state, voting
 from app.auth import (
     MEMBER_VIEW_COOKIE,
     build_authorization_url,
@@ -45,6 +45,11 @@ async def _background_checker() -> None:
                 if meetup and not meetup.finalized_option_id:
                     await state.check_meetup_24h_reminder(db, meetup)
                     await state.check_meetup_1h_reminder(db, meetup)
+                    # Close an expired poll here rather than waiting for a page
+                    # view to trigger it — nobody is browsing at 11pm.
+                    await state.check_meetup_finalization(db, meetup)
+                elif meetup:
+                    await state.check_meetup_event_reminder(db, meetup)
         except Exception:
             pass  # fail silently — retries next iteration
 
@@ -80,6 +85,10 @@ templates.env.globals["ALL_ADS"] = ads.ADS
 # hardcoded claim — the old copy promised "2–3x/week max", which the code has
 # never enforced.
 templates.env.globals["AD_MIN_GAP_SECONDS"] = ads.MIN_GAP_SECONDS
+# Stored datetimes are naive UTC; every one a member reads goes through these.
+templates.env.filters["localdt"] = clock.format_local
+templates.env.filters["localtz"] = clock.format_local_tz
+templates.env.filters["utciso"] = clock.utc_iso
 
 
 # ---------------------------------------------------------------------------
@@ -1523,8 +1532,6 @@ async def admin_create_meetup(
     user: User = Depends(require_admin),
 ):
     """Manually create a meetup poll for the most recent completed season."""
-    from app.state import _next_weekday_at
-
     season = await crud.get_most_recent_complete_season(db)
     if not season:
         return RedirectResponse("/admin", status_code=302)
@@ -1533,18 +1540,7 @@ async def admin_create_meetup(
     if existing and existing.season_id == season.id:
         return RedirectResponse("/admin", status_code=302)
 
-    deadline = datetime.utcnow() + timedelta(weeks=settings.meetup_deadline_weeks)
-    meetup = await crud.create_meetup(db, season.id, deadline)
-
-    if settings.meetup_default_locations.strip():
-        event_dt = _next_weekday_at(
-            deadline, settings.meetup_default_day, settings.meetup_default_time
-        )
-        for loc in settings.meetup_default_locations.split(","):
-            loc = loc.strip()
-            if loc:
-                await crud.create_meetup_option(db, meetup.id, user.id, event_dt, loc)
-
+    await state.create_meetup_with_defaults(db, season.id, user.id)
     return RedirectResponse("/admin", status_code=302)
 
 
@@ -2180,10 +2176,17 @@ async def delete_book(
 _MEETUP_RETURN_PATHS = {"/meetup", "/complete"}
 
 
-def _meetup_redirect(return_to: str) -> RedirectResponse:
+def _meetup_redirect(return_to: str, err: str = "") -> RedirectResponse:
+    """Bounce back to whichever page the form was posted from.
+
+    `err` is a short code the shared partial turns into a visible message —
+    these handlers used to swallow every rejection into a silent redirect, so a
+    bad date just made the form appear to do nothing.
+    """
     path = return_to if return_to in _MEETUP_RETURN_PATHS else "/meetup"
+    query = f"?meetup_err={err}" if err else ""
     anchor = "#meetup" if path == "/complete" else ""
-    return RedirectResponse(f"{path}{anchor}", status_code=302)
+    return RedirectResponse(f"{path}{query}{anchor}", status_code=302)
 
 
 async def _build_meetup_context(db: AsyncSession, user: User) -> dict:
@@ -2193,24 +2196,9 @@ async def _build_meetup_context(db: AsyncSession, user: User) -> dict:
     """
     meetup = await crud.get_active_meetup(db)
     if meetup and not meetup.finalized_option_id and datetime.utcnow() > meetup.deadline:
-        winner = await crud.finalize_meetup(db, meetup)
-        if winner:
-            participants = await crud.get_participants_for_season(db, meetup.season_id)
-            emails = [u.email for u in participants if u.email and u.email_notifications]
-            await notify.notify_all(
-                emails=emails,
-                discord_msg=(
-                    f"📅 Meetup decided! "
-                    f"{winner.event_datetime.strftime('%A, %b %d at %-I:%M %p')} "
-                    f"at {winner.location}"
-                ),
-                email_subject="Meetup time is set!",
-                email_body=(
-                    f"<h2>We're meeting up!</h2>"
-                    f"<p>{winner.event_datetime.strftime('%A, %b %d at %-I:%M %p')} "
-                    f"at {winner.location}</p>"
-                ),
-            )
+        # The background checker normally gets here first; this covers a poll
+        # that expired while the process was down.
+        if await state.check_meetup_finalization(db, meetup):
             # Reload to get updated finalized_option
             meetup = await crud.get_active_meetup(db)
 
@@ -2286,29 +2274,34 @@ async def submit_meetup_rsvp(
 
 @app.post("/meetup/option", response_class=HTMLResponse)
 async def add_meetup_option(
-    event_month: int = Form(...),
-    event_day: int = Form(...),
+    event_date: str = Form(...),
     event_time: str = Form("19:00"),
     location: str = Form(...),
     return_to: str = Form("/meetup"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_user),
 ):
+    """Propose a date+location. Date and time are club-local, stored as UTC.
+
+    The form used to be a month dropdown and a day number, with the year
+    guessed from whether it was currently November. A real date field removes
+    both the guess and the impossible dates it happily accepted.
+    """
     meetup = await crud.get_active_meetup_shallow(db)
     if not meetup or meetup.finalized_option_id or datetime.utcnow() > meetup.deadline:
-        return _meetup_redirect(return_to)
+        return _meetup_redirect(return_to, "closed")
     try:
         hour, minute = (int(x) for x in event_time.split(":"))
-        now = datetime.utcnow()
-        year = now.year
-        # In Nov/Dec, if proposed month is Jan/Feb, assume next year
-        if now.month >= 11 and event_month <= 2:
-            year += 1
-        event_dt = datetime(year, event_month, event_day, hour, minute)
+        year, month, day = (int(x) for x in event_date.split("-"))
+        event_dt = clock.to_utc(datetime(year, month, day, hour, minute))
     except (ValueError, TypeError):
-        return _meetup_redirect(return_to)
-    if event_dt < datetime.utcnow():
-        return _meetup_redirect(return_to)
+        return _meetup_redirect(return_to, "baddate")
+    # A date on or before the poll deadline can win the vote and then be in the
+    # past by the time the poll actually closes.
+    if event_dt <= meetup.deadline:
+        return _meetup_redirect(return_to, "tooearly")
+    if not location.strip():
+        return _meetup_redirect(return_to, "noloc")
     await crud.create_meetup_option(db, meetup.id, user.id, event_dt, location.strip())
     return _meetup_redirect(return_to)
 
@@ -2352,27 +2345,13 @@ async def finalize_meetup(
     meetup = await crud.get_active_meetup_shallow(db)
     if not meetup or meetup.finalized_option_id:
         return _meetup_redirect(return_to)
+    if not await crud.option_belongs_to_meetup(db, option_id, meetup.id):
+        return _meetup_redirect(return_to, "badoption")
     await crud.admin_finalize_meetup(db, meetup, option_id)
     # Reload to get the finalized option details
     meetup = await crud.get_active_meetup(db)
     if meetup and meetup.finalized_option:
-        opt = meetup.finalized_option
-        participants = await crud.get_participants_for_season(db, meetup.season_id)
-        emails = [u.email for u in participants if u.email and u.email_notifications]
-        await notify.notify_all(
-            emails=emails,
-            discord_msg=(
-                f"📅 Meetup decided! "
-                f"{opt.event_datetime.strftime('%A, %b %d at %-I:%M %p')} "
-                f"at {opt.location}"
-            ),
-            email_subject="Meetup time is set!",
-            email_body=(
-                f"<h2>We're meeting up!</h2>"
-                f"<p>{opt.event_datetime.strftime('%A, %b %d at %-I:%M %p')} "
-                f"at {opt.location}</p>"
-            ),
-        )
+        await state.announce_meetup(db, meetup, meetup.finalized_option)
     return _meetup_redirect(return_to)
 
 
@@ -2390,9 +2369,9 @@ async def update_meetup_deadline(
     try:
         hour, minute = (int(x) for x in deadline_time.split(":"))
         year, month, day = (int(x) for x in deadline_date.split("-"))
-        new_deadline = datetime(year, month, day, hour, minute)
+        new_deadline = clock.to_utc(datetime(year, month, day, hour, minute))
     except (ValueError, TypeError):
-        return _meetup_redirect(return_to)
+        return _meetup_redirect(return_to, "baddate")
     await crud.update_meetup_deadline(db, meetup, new_deadline)
     return _meetup_redirect(return_to)
 
@@ -2414,11 +2393,61 @@ async def admin_update_option(
     event_datetime = None
     if event_date and event_time:
         try:
-            event_datetime = datetime.strptime(f"{event_date} {event_time}", "%Y-%m-%d %H:%M")
+            event_datetime = clock.to_utc(
+                datetime.strptime(f"{event_date} {event_time}", "%Y-%m-%d %H:%M")
+            )
         except ValueError:
-            pass
+            return _meetup_redirect(return_to, "baddate")
     await crud.update_option_details(db, option_id, location.strip(), is_hybrid, event_datetime)
     return _meetup_redirect(return_to)
+
+
+@app.get("/meetup/calendar.ics")
+async def meetup_ics(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_user),
+):
+    """The finalized meetup as a calendar file.
+
+    Times go out as UTC (the trailing Z), which every calendar client renders
+    in the viewer's own zone — the one case where not localising is correct.
+    """
+    meetup = await crud.get_active_meetup(db)
+    if not meetup or not meetup.finalized_option:
+        return RedirectResponse("/meetup", status_code=302)
+
+    opt = meetup.finalized_option
+    book = await crud.get_winner_book_for_season(db, meetup.season_id)
+    title = f"Book club — {book.title}" if book else "Book club"
+
+    def stamp(dt: datetime) -> str:
+        return dt.strftime("%Y%m%dT%H%M%SZ")
+
+    def escape(text: str) -> str:
+        # RFC 5545 escaping; commas and semicolons are field separators.
+        return text.replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;")
+
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Stumbling Book Club//Meetup//EN",
+        "CALSCALE:GREGORIAN",
+        "BEGIN:VEVENT",
+        f"UID:meetup-{meetup.id}-option-{opt.id}@stumblingbookclub.com",
+        f"DTSTAMP:{stamp(datetime.utcnow())}",
+        f"DTSTART:{stamp(opt.event_datetime)}",
+        f"DTEND:{stamp(opt.event_datetime + timedelta(hours=2))}",
+        f"SUMMARY:{escape(title)}",
+        f"LOCATION:{escape(opt.location)}",
+        f"DESCRIPTION:{escape(f'Details and RSVP: {settings.site_url}/meetup')}",
+        "END:VEVENT",
+        "END:VCALENDAR",
+    ]
+    return Response(
+        content="\r\n".join(lines) + "\r\n",
+        media_type="text/calendar; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="book-club.ics"'},
+    )
 
 
 @app.post("/toggle-member-view", response_class=HTMLResponse)
